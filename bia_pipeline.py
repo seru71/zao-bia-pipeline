@@ -346,7 +346,7 @@ if __name__ == '__main__':
     
     # reference files
     reference = os.path.join(reference_root, config.get('Resources','reference-genome'))    
-    adapters = os.path.join(reference_root, config.get('Resources', 'adapters-fasta'))
+    adapters = config.get('Resources', 'adapters-fasta')
     
     # tools
     bcl2fastq = config.get('Tools','bcl2fastq')
@@ -482,7 +482,7 @@ def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
                    --mem-per-cpu={mem} \
                    --time={time} \
                   ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
-                   
+    #print full_cmd                   
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
                                  job_other_options=job_options,
@@ -601,8 +601,6 @@ def trim_reads(inputs, outfqs):
             {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
             MINLEN:36 \
             ILLUMINACLIP:{adapter}:2:30:10 \
-            LEADING:3 \
-            TRAILING:3 \
             SLIDINGWINDOW:4:15".format(in1=inputs[0], in2=inputs[1],
                                        out1=outfqs[0], out2=outfqs[1],
                                        unpaired1=unpaired[0], unpaired2=unpaired[1],
