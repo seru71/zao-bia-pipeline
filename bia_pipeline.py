@@ -593,15 +593,10 @@ def link_fastqs(fastq_in, fastq_out):
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
 @active_if(run_folder != None or input_fastqs != None)
-@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), [r'\1/\2_\3.fq1.gz', r'\1/\2_\3.fq2.gz'])
+@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), [r'\1/\2_\3_R1.fq.gz', r'\1/\2_\3_R2.fq.gz'])
 def trim_reads(inputs, outfqs):
     """ Trim reads """
-#    outfq1 = output
-#    outfq2 = output.replace('fq1.gz','fq2.gz')
-    unpaired = [outfqs[0].replace('fq1.gz','fq1_unpaired.gz'), outfqs[1].replace('fq2.gz','fq2_unpaired.gz')]               
-    # logfile = output.replace('fq1.gz','trimmomatic.log')
-    # -trimlog {log} \
-    # log=logfile
+    unpaired = [outfqs[0].replace('R1.fq.gz','R1_unpaired.fq.gz'), outfqs[1].replace('R2.fq.gz','R2_unpaired.fq.gz')]               
     args = "PE -phred33 -threads 1 \
             {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
             MINLEN:36 \
@@ -625,7 +620,7 @@ def trim_reads(inputs, outfqs):
 
 def clean_trimmed_fastqs():
     """ Remove the trimmed fastq files. Links to original fastqs are kept """
-    for f in glob.glob(os.path.join(runs_scratch_dir,'*','*.fq[12]*.gz')):
+    for f in glob.glob(os.path.join(runs_scratch_dir,'*','*.fq.gz')):
         os.remove(f)
 
 #
@@ -637,7 +632,7 @@ def clean_trimmed_fastqs():
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@collate(trim_reads, regex(r'(.+)/([^/]+)/([^/]+)_L\d\d\d\.fq[12]\.gz$'),  r'\2/contigs.fasta')
+@collate(trim_reads, regex(r'(.+)/([^/]+)/([^/]+)_L\d\d\d_R[12]\.fq\.gz$'),  r'\2/contigs.fasta')
 def assemble_reads(fastqs, contigs):
     threads = 4
     mem=8192
@@ -673,7 +668,7 @@ def qc_raw_reads(input_fastq, report):
 #@collate(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.gz$'), 
 #	  (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html',
 #	   os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[1]}_fastqc.html'))
-@transform(trim_reads, formatter(''),
+@transform(trim_reads, formatter(),
           (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[0]}_fastqc.html',
            os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[1]}_fastqc.html'))
 def qc_trimmed_reads(input_fastqs, reports):
