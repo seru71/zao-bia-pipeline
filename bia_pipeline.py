@@ -226,20 +226,16 @@ if __name__ == '__main__':
      logging_mutex) = make_shared_logger_and_proxy (get_logger,
                                                     module_name,
                                                     {})
-
-
-
     
-
-
+    
     #vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     #                                             #
     #   Get pipeline settings from a config file  #
     #                                             #
     #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-	if not os.path.exists(options.pipeline_settings): 
-		raise Exception('Provided settings file [%s] does not exist or cannot be read.' % options.pipeline_settings)
+    
+    if not os.path.exists(options.pipeline_settings): 
+        raise Exception('Provided settings file [%s] does not exist or cannot be read.' % options.pipeline_settings)
 
     import ConfigParser
     config = ConfigParser.ConfigParser()
@@ -262,8 +258,8 @@ if __name__ == '__main__':
     input_fastqs = None
     input_bams = None
     try:
-		run_folder = config.get('Inputs','run-directory') 
-		logger.info('Found run-directory setting. Starting from bcl2fastq conversion.')
+	run_folder = config.get('Inputs','run-directory') 
+	logger.info('Found run-directory setting. Starting from bcl2fastq conversion.')
         # check presence of the run folder, and sample sheet file
         if not os.path.exists(run_folder) or not os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
             raise Exception("Missing sample sheet file: %s.\n" % os.path.join(run_folder,'SampleSheet.csv'))
@@ -355,7 +351,9 @@ if __name__ == '__main__':
     # tools
     bcl2fastq = config.get('Tools','bcl2fastq')
     trimmomatic = config.get('Tools', 'trimmomatic') 
-	spades = config.get('Tools', 'spades') 
+    fastqc = config.get('Tools', 'fastqc')
+    spades = config.get('Tools', 'spades') 
+    quast = config.get('Tools', 'quast')
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
@@ -479,12 +477,11 @@ def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
                                         interpreter_args = interpreter_args if interpreter_args!=None else "")
 
     stdout, stderr = "", ""
-    job_options = "--account={account} \
-		   --ntasks=1 \
+    job_options = "--ntasks=1 \
                    --cpus-per-task={cpus} \
                    --mem-per-cpu={mem} \
                    --time={time} \
-                  ".format(account=tsd_account, cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
+                  ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
                    
     try:
         stdout, stderr = run_job(full_cmd.strip(), 
@@ -502,9 +499,14 @@ def get_sample_ids():
     files = glob.glob(os.path.join(runs_scratch_dir,'*','*.gvcf'))
     return [ os.path.splitext(os.path.basename(f))[0] for f in files ]
 
-def get_num_files():
-    """ Provides meaningful result only after HaplotypeCaller step"""
-    return len(get_sample_ids())
+
+def produce_fastqc_report(fastq_file, output_dir=None):
+    args = fastq_file
+    args += (' -o '+output_dir) if output_dir != None else ''
+    run_cmd(fastqc, args, dockerize=dockerize)
+
+
+
     
 
 
@@ -569,9 +571,9 @@ def archive_fastqs(completed_flag, archive_dir):
 @active_if(run_folder != None or input_fastqs != None)
 @jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
 @follows(archive_fastqs)
-@subdivide(os.path.join(runs_scratch_dir,'fastqs','*.fastq.gz') if run_folder != None else input_fastqs,
+@transform(os.path.join(runs_scratch_dir,'fastqs','*.fastq.gz') if run_folder != None else input_fastqs,
            formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'), 
-           '{subpath[0][1]}/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
+           runs_scratch_dir+'/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
 def link_fastqs(fastq_in, fastq_out):
     """Make working directory for every sample and link fastq files in"""
     if not os.path.exists(os.path.dirname(fastq_out)):
@@ -591,11 +593,12 @@ def link_fastqs(fastq_in, fastq_out):
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
 @active_if(run_folder != None or input_fastqs != None)
-@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'),  r'\1/\2_\3.fq1.gz')
-def trim_reads(inputs, output):
-    outfq1 = output
-    outfq2 = output.replace('fq1.gz','fq2.gz')
-    unpaired = [outfq1.replace('fq1.gz','fq1_unpaired.gz'), outfq2.replace('fq2.gz','fq2_unpaired.gz')]               
+@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), [r'\1/\2_\3.fq1.gz', r'\1/\2_\3.fq2.gz'])
+def trim_reads(inputs, outfqs):
+    """ Trim reads """
+#    outfq1 = output
+#    outfq2 = output.replace('fq1.gz','fq2.gz')
+    unpaired = [outfqs[0].replace('fq1.gz','fq1_unpaired.gz'), outfqs[1].replace('fq2.gz','fq2_unpaired.gz')]               
     # logfile = output.replace('fq1.gz','trimmomatic.log')
     # -trimlog {log} \
     # log=logfile
@@ -606,7 +609,7 @@ def trim_reads(inputs, output):
             LEADING:3 \
             TRAILING:3 \
             SLIDINGWINDOW:4:15".format(in1=inputs[0], in2=inputs[1],
-                                       out1=outfq1, out2=outfq2,
+                                       out1=outfqs[0], out2=outfqs[1],
                                        unpaired1=unpaired[0], unpaired2=unpaired[1],
                                        adapter=adapters)
     max_mem = 2048
@@ -634,17 +637,20 @@ def clean_trimmed_fastqs():
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@collate(trim_reads, regex(r'(.+)/([^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'),  r'\2/contigs.fasta')
+@collate(trim_reads, regex(r'(.+)/([^/]+)/([^/]+)_L\d\d\d\.fq[12]\.gz$'),  r'\2/contigs.fasta')
 def assemble_reads(fastqs, contigs):
     threads = 4
-    
-    out_dir=os.path.dirname(contigs)
-    
-    args = "-1 {fq1} -2 {fq2} -o {out_dir} \
-		    -m {mem} -t {threads} --carefull \
-			".format(fq1=fastqs[0], fq2=fastqs[1], out_dir=out_dir, threads=threads)
+    mem=8192
 
-    run_cmd(spades, args, cpus=threads, mem_per_cpu=8192/threads)
+    out_dir=os.path.dirname(contigs)
+    fastqs=fastqs[0]
+
+    args = "-1 {fq1} -2 {fq2} -o {out_dir} \
+	    -m {mem} -t {threads} --careful \
+           ".format(fq1=fastqs[0], fq2=fastqs[1], out_dir=out_dir, 
+                    mem=mem, threads=threads)
+
+    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
     
     
     
@@ -655,28 +661,39 @@ def assemble_reads(fastqs, contigs):
 # QC the FASTQ files
 #
 
-@transform(link_fastqs, suffix(".gz"), '.html')
+@follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','read_qc')))
+@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
+           os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
 def qc_raw_reads(input_fastq, report):
     """ Generate FastQC report for raw FASTQs """
-    produce_fastqc_report(input_fastq, report)
+    produce_fastqc_report(input_fastq, os.path.dirname(report))
 
-@transform(trim_reads, suffix(".gz"), '.html')
-def qc_trimmed_reads(input_fastq, report):
-    """ Generate FastQC report for raw FASTQs """
-    produce_fastqc_report(input_fastq, report)
+
+@follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','read_qc')))
+#@collate(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.gz$'), 
+#	  (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html',
+#	   os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[1]}_fastqc.html'))
+@transform(trim_reads, formatter(''),
+          (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[0]}_fastqc.html',
+           os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[1]}_fastqc.html'))
+def qc_trimmed_reads(input_fastqs, reports):
+    """ Generate FastQC report for trimmed FASTQs """
+    produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
+    produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
 
 @follows(qc_raw_reads, qc_trimmed_reads)
 def qc_reads():
-	pass
+    pass
 
 #
 #
 # QC the assemblies
 #
 
-@merge(assemble_reads, os.path.join(runs_scratch_dir, 'qc', run_id))
+@follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
+@merge(assemble_reads, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc', run_id))
 def qc_assemblies(contigs, report_dir):
-	args = "-o {%s}" % report_dir + " ".join(contigs)
+    args = "-o {%s}" % report_dir + " ".join(contigs)
     run_cmd(quast, args)
 
 
