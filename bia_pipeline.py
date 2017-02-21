@@ -607,9 +607,9 @@ def trim_reads(inputs, outfqs):
                                        out1=outfqs[0], out2=outfqs[1],
                                        unpaired1=unpaired[0], unpaired2=unpaired[1],
                                        adapter=adapters)
-    max_mem = 2048
-    run_cmd(trimmomatic, args, interpreter_args="-Xmx"+str(max_mem)+"m", 
-            dockerize=dockerize, cpus=1, mem_per_cpu=max_mem)
+#    max_mem = 2048
+    run_cmd(trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
+            dockerize=dockerize)#, cpus=1, mem_per_cpu=max_mem)
 
 
 #
@@ -632,7 +632,7 @@ def clean_trimmed_fastqs():
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@collate(trim_reads, regex(r'(.+)/([^/]+)/([^/]+)_L\d\d\d_R[12]\.fq\.gz$'),  r'\2/contigs.fasta')
+@collate(trim_reads, formatter(), '{subpath[0][0]}/contigs.fasta')
 def assemble_reads(fastqs, contigs):
     threads = 4
     mem=8192
