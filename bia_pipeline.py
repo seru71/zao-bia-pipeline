@@ -663,16 +663,17 @@ def qc_raw_reads(input_fastq, report):
 
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','read_qc')))
-#@collate(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.gz$'), 
-#	  (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html',
-#	   os.path.join(runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[1]}_fastqc.html'))
-@transform(trim_reads, formatter(),
-          (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[0]}_fastqc.html',
-           os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[1]}_fastqc.html'))
-def qc_trimmed_reads(input_fastqs, reports):
+@transform(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$'), 
+	  os.path.join(runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')
+#	   os.path.join(runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html')
+#@transform(trim_reads, formatter(),
+#          (os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[0]}_fastqc.html',
+#           os.path.join(runs_scratch_dir,'qc','read_qc/')+'{basename[1]}_fastqc.html'))
+def qc_trimmed_reads(input_fastqs, report_R1):
     """ Generate FastQC report for trimmed FASTQs """
-    produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
-    produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
+    report_R2 = report_R1.replace('_R1.fq.gz','_R2.fq.gz')
+    produce_fastqc_report(input_fastqs[0], os.path.dirname(report_R1))
+    produce_fastqc_report(input_fastqs[1], os.path.dirname(report_R2))
 
 @follows(qc_raw_reads, qc_trimmed_reads)
 def qc_reads():
@@ -684,10 +685,10 @@ def qc_reads():
 #
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
-@merge(assemble_reads, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc', run_id))
+@merge(assemble_reads, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','quast_report'))
 def qc_assemblies(contigs, report_dir):
-    args = "-o {%s}" % report_dir + " ".join(contigs)
-    run_cmd(quast, args)
+    args = ("-o %s " % report_dir) + " ".join(contigs)
+    run_cmd(quast, args, dockerize=dockerize)
 
 
 
