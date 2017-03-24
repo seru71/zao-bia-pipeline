@@ -599,14 +599,14 @@ def trim_reads(inputs, outfqs):
     unpaired = [outfqs[0].replace('R1.fq.gz','R1_unpaired.fq.gz'), outfqs[1].replace('R2.fq.gz','R2_unpaired.fq.gz')]               
     args = "PE -phred33 -threads 1 \
             {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
-            MINLEN:36 \
             ILLUMINACLIP:{adapter}:2:30:10 \
             LEADING:3 \
             TRAILING:3 \
-            SLIDINGWINDOW:4:15".format(in1=inputs[0], in2=inputs[1],
-                                       out1=outfqs[0], out2=outfqs[1],
-                                       unpaired1=unpaired[0], unpaired2=unpaired[1],
-                                       adapter=adapters)
+            SLIDINGWINDOW:4:15 \
+            MINLEN:36".format(in1=inputs[0], in2=inputs[1],
+                              out1=outfqs[0], out2=outfqs[1],
+                              unpaired1=unpaired[0], unpaired2=unpaired[1],
+                              adapter=adapters)
 #    max_mem = 2048
     run_cmd(trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
             dockerize=dockerize)#, cpus=1, mem_per_cpu=max_mem)
