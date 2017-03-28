@@ -351,6 +351,7 @@ if __name__ == '__main__':
     # tools
     bcl2fastq = config.get('Tools','bcl2fastq')
     trimmomatic = config.get('Tools', 'trimmomatic') 
+    bbmerge = config.get('Tools', 'bbmerge') 
     fastqc = config.get('Tools', 'fastqc')
     spades = config.get('Tools', 'spades') 
     quast = config.get('Tools', 'quast')
@@ -581,8 +582,10 @@ def link_fastqs(fastq_in, fastq_out):
     if not os.path.exists(fastq_out):
         os.symlink(fastq_in, fastq_out) 
 
-    
-    
+#
+# ---------------- either only trim the reads --------------------------    
+#
+   
 #
 # Input FASTQ filenames are expected to have following format:
 #    [SAMPLE_ID]_[S_NUM]_[LANE_ID]_[R1|R2]_001.fastq.gz
@@ -614,6 +617,93 @@ def trim_reads(inputs, outfqs):
 
 
 #
+# --------------------- or merge and trim ------------------------------
+#
+
+
+#
+# Input FASTQ filenames are expected to have following format:
+#    [SAMPLE_ID]_[S_NUM]_[LANE_ID]_[R1|R2]_001.fastq.gz
+# In this step, overlapping reads from two FASTQ files matching on [SAMPLE_ID] will be merged together. 
+# The output will be written to three FASTQ files
+#    [SAMPLE_ID]_merged.fq.gz - containing merged reads
+#    [SAMPLE_ID]_R1.fq.gz     - with notmerged R1
+#    [SAMPLE_ID]_R2.fq.gz     - with notmerged R2 
+# SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
+# 
+@active_if(run_folder != None or input_fastqs != None)
+@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), [r'\1/\2_merged.fq.gz', r'\1/\2_notmerged_R1.fq.gz', r'\1/\2_notmerged_R2.fq.gz'])
+def merge_reads(inputs, outputs):
+	""" Merge overlapping reads """
+	
+	hist=replace(outputs[0], '_merged.fq.gz','.hist')
+	args='in1={fq1} in2={fq2} \
+		  out={fqm} outu1={u1} outu2={u2} \
+		  ihist={hist} adapters={adapters} \
+		  '.format(fq1=inputs[0], fq2=inputs[1],
+					fqm=outputs[0], u1=outputs[1], u2=outputs[2],
+					hist=hist, adapters=adapters)
+		  
+	run_cmd(bbmerge, args, dockerize=dockerize)
+    
+    
+    
+#
+# Input FASTQ filenames are expected to have following format:
+#    [SAMPLE_ID]_R[12].fq.gz
+# In this step, the two FASTQ files with nonoverlapping R1 and R2 reads will be trimmed together. 
+# The output will be written to two FASTQ files
+#    [SAMPLE_ID]_R1.trimmed.fq.gz
+#    [SAMPLE_ID]_R2.trimmed.fq.gz
+# SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
+#
+@active_if(run_folder != None or input_fastqs != None)
+@collate(merge_reads, regex(r'(.+)/([^/]+)_R[12]\.fq\.gz$'), [r'\1/\2_R1.trimmed.fq.gz', r'\1/\2_R2.trimmed.fq.gz'])
+def trim_notmerged_pairs(inputs, outfqs):
+    """ Trim nonoverlapping reads """
+    unpaired = [outfqs[0].replace('R1.trimmed.fq.gz','R1.unpaired.fq.gz'), outfqs[1].replace('R2.trimmed.fq.gz','R2.unpaired.fq.gz')]               
+    args = "PE -phred33 -threads 1 \
+            {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
+            ILLUMINACLIP:{adapter}:2:30:10 \
+            SLIDINGWINDOW:4:15 MINLEN:36 \
+            ".format(in1=inputs[0], in2=inputs[1],
+                                       out1=outfqs[0], out2=outfqs[1],
+                                       unpaired1=unpaired[0], unpaired2=unpaired[1],
+                                       adapter=adapters)
+#    max_mem = 2048
+    run_cmd(trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
+            dockerize=dockerize)#, cpus=1, mem_per_cpu=max_mem)
+
+
+#
+# Input FASTQ filename is expected to have following format:
+#    [SAMPLE_ID]_merged.fq.gz
+# In this step, the FASTQ file with merged overlapping reads will be trimmed. 
+# The output will be written to:
+#    [SAMPLE_ID]_merged.trimmed.fq.gz
+# SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
+#
+@active_if(run_folder != None or input_fastqs != None)
+@transform(merge_reads, suffix('_merged.fq.gz'), '_merged.trimmed.fq.gz')
+def trim_merged_reads(merged_fq, trimmed_fq):
+    """ Trim merged overlapping reads """
+
+    args = "SE -phred33 -threads 1 \
+            {fq_in} {fq_out} ILLUMINACLIP:{adapter}:2:30:10 \
+            SLIDINGWINDOW:4:15 MINLEN:36 \
+            ".format(fq_in=merged_fq, fq_out=trimmed_fq, adapter=adapters)
+#    max_mem = 2048
+    run_cmd(trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
+            dockerize=dockerize)#, cpus=1, mem_per_cpu=max_mem)
+
+
+
+
+# -------------------------------------------------------------------- # 
+
+
+
+#
 #
 # Assemble the reads 
 # 
@@ -633,12 +723,15 @@ def clean_trimmed_fastqs():
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@collate(trim_reads, formatter(), '{subpath[0][0]}/contigs.fasta')
-def assemble_reads(fastqs, contigs):
+@collate(trim_reads, formatter(), '{subpath[0][0]}/tr_assembly/contigs.fasta')
+def assemble_trimmed(fastqs, contigs):
     threads = 4
     mem=8192
 
     out_dir=os.path.dirname(contigs)
+    if not os.path_isdir(out_dir):
+		os.mkdir(out_dir)
+
     fastqs=fastqs[0]
 
     args = "-1 {fq1} -2 {fq2} -o {out_dir} \
@@ -650,6 +743,36 @@ def assemble_reads(fastqs, contigs):
     
     
     
+
+#
+# FASTQ filenames are expected to have following format:
+#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
+# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
+# The output will be written to SAMPLE_ID directory:
+#    [SAMPLE_ID]/
+#
+@jobs_limit(8)
+#@posttask(clean_trimmed_fastqs)
+@collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/mr_assembly/contigs.fasta')
+def assemble_merged(fastqs, contigs):
+    threads = 4
+    mem=8192
+
+    out_dir=os.path.dirname(contigs)
+    if not os.path_isdir(out_dir):
+		os.mkdir(out_dir)
+		
+    fastqs=fastqs[0]
+
+    args = "--s1 {fqm} --pe1-1 {fq1} --pe1-2 {fq2} --s2 {fq1u} \
+		-o {out_dir} -m {mem} -t {threads} --careful \
+           ".format(fq1=fastqs[0], fq2=fastqs[1], out_dir=out_dir, 
+                    mem=mem, threads=threads)
+
+    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+    
+    
+
     
 
 #
@@ -678,6 +801,19 @@ def qc_trimmed_reads(input_fastqs, report_R1):
     produce_fastqc_report(input_fastqs[0], os.path.dirname(report_R1))
     produce_fastqc_report(input_fastqs[1], os.path.dirname(report_R2))
 
+@follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','read_qc')))
+@transform([trim_merged_reads, trim_notmerged_pairs], formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$'), 
+	  os.path.join(runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')
+def qc_merged_reads(input_fastqs, report_prefix):
+    """ Generate FastQC report for trimmed FASTQs """
+    report_R1 = report_name.replace('_merged.fq.gz','_notmerged_R1.fq.gz')
+    report_R2 = report_name.replace('_merged.fq.gz','_notmerged_R2.fq.gz')
+    produce_fastqc_report(input_fastqs[0], os.path.dirname(report_name))
+    produce_fastqc_report(input_fastqs[1], os.path.dirname(report_R1))
+    produce_fastqc_report(input_fastqs[2], os.path.dirname(report_R2))
+
+
+
 @follows(qc_raw_reads, qc_trimmed_reads)
 def qc_reads():
     pass
@@ -688,11 +824,16 @@ def qc_reads():
 #
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
-@merge(assemble_reads, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','quast_report'))
-def qc_assemblies(contigs, report_dir):
+@merge(assemble_trimmed, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
+def qc_tr_assemblies(contigs, report_dir):
     args = ("-o %s " % report_dir) + " ".join(contigs)
     run_cmd(quast, args, dockerize=dockerize)
 
+@follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
+@merge(assemble_merged, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','mr_report'))
+def qc_mr_assemblies(contigs, report_dir):
+    args = ("-o %s " % report_dir) + " ".join(contigs)
+    run_cmd(quast, args, dockerize=dockerize)
 
 
 
