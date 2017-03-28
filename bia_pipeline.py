@@ -636,7 +636,7 @@ def trim_reads(inputs, outfqs):
 def merge_reads(inputs, outputs):
 	""" Merge overlapping reads """
 	
-	hist=replace(outputs[0], '_merged.fq.gz','.hist')
+	hist=outputs[0].replace('_merged.fq.gz','.hist')
 	args='in1={fq1} in2={fq2} \
 		  out={fqm} outu1={u1} outu2={u2} \
 		  ihist={hist} adapters={adapters} \
@@ -658,7 +658,9 @@ def merge_reads(inputs, outputs):
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
 @active_if(run_folder != None or input_fastqs != None)
-@collate(merge_reads, regex(r'(.+)/([^/]+)_R[12]\.fq\.gz$'), [r'\1/\2_R1.trimmed.fq.gz', r'\1/\2_R2.trimmed.fq.gz'])
+@transform(merge_reads, formatter(), ['{path[1]}/{basename[1]}.trimmed.fq.gz', '{path[2]}/{basename[2]}.trimmed.fq.gz'])
+#@transform(merge_reads, formatter('.+/([^/]+)_(merged|notmerged_R1|notmerged_R2).fq.gz'), 
+#			['{path[1]}/{basename[1]}_{2[1]}.trimmed.fq.gz', '{path[2]}/{basename[2]}_{2[2]}.trimmed.fq.gz'])
 def trim_notmerged_pairs(inputs, outfqs):
     """ Trim nonoverlapping reads """
     unpaired = [outfqs[0].replace('R1.trimmed.fq.gz','R1.unpaired.fq.gz'), outfqs[1].replace('R2.trimmed.fq.gz','R2.unpaired.fq.gz')]               
@@ -666,7 +668,7 @@ def trim_notmerged_pairs(inputs, outfqs):
             {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
             ILLUMINACLIP:{adapter}:2:30:10 \
             SLIDINGWINDOW:4:15 MINLEN:36 \
-            ".format(in1=inputs[0], in2=inputs[1],
+            ".format(in1=inputs[1], in2=inputs[2],
                                        out1=outfqs[0], out2=outfqs[1],
                                        unpaired1=unpaired[0], unpaired2=unpaired[1],
                                        adapter=adapters)
@@ -685,9 +687,10 @@ def trim_notmerged_pairs(inputs, outfqs):
 #
 @active_if(run_folder != None or input_fastqs != None)
 @transform(merge_reads, suffix('_merged.fq.gz'), '_merged.trimmed.fq.gz')
-def trim_merged_reads(merged_fq, trimmed_fq):
+def trim_merged_reads(input_fqs, trimmed_fq):
     """ Trim merged overlapping reads """
 
+    merged_fq=input_fqs[0]
     args = "SE -phred33 -threads 1 \
             {fq_in} {fq_out} ILLUMINACLIP:{adapter}:2:30:10 \
             SLIDINGWINDOW:4:15 MINLEN:36 \
@@ -861,7 +864,7 @@ def qc_mr_assemblies(contigs, report_dir):
 
 
 #@posttask(archive_results, cleanup_files)
-@follows(qc_reads, qc_assemblies)
+@follows(qc_reads, qc_mr_assemblies)
 def complete_run():
     pass
 
