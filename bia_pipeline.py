@@ -727,7 +727,7 @@ def clean_trimmed_fastqs():
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@collate(trim_reads, formatter(), '{subpath[0][0]}/tr_assembly/contigs.fasta')
+@collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra/contigs.fasta')
 def assemble_trimmed(fastqs, contigs):
     threads = 4
     mem=8192
@@ -757,7 +757,7 @@ def assemble_trimmed(fastqs, contigs):
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/mr_assembly/contigs.fasta')
+@collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra/contigs.fasta')
 def assemble_merged(fastqs, contigs):
     threads = 4
     mem=8192
