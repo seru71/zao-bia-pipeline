@@ -741,7 +741,7 @@ def assemble_trimmed(fastqs, contigs):
     args = "--pe1-1 {fq1} --pe1-2 {fq2} --s1 {single1} --s2 {single2} \
 		-o {out_dir} -m {mem} -t {threads} --careful \
            ".format(fq1=fastqs[0], fq2=fastqs[1], 
-                    single1=fastqs[2], single=fastqs[3], 
+                    single1=fastqs[2], single2=fastqs[3], 
                     out_dir=out_dir, mem=mem, threads=threads)
 
     run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
