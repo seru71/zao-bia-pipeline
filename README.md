@@ -58,8 +58,8 @@ The NGS pipeline is run using `bia_pipeline.py` script:
     Other useful arguments are dry-run (`-n`), verbosity level (`-v`), and number of concurrent jobs (`-j`).
     
     Important part of the pipeline is the config file which contains paths to tools, reference genome, and docker settings.
-    See an exemplary file for all required options and documentation in <PIPELINE_HOME>/bia_pipeline.config
-    If the settings file is not given as argument ( `--settings` / `-s` ), it is expected in the RUN_FOLDER/bia_pipeline.config
+    See an exemplary file for all required options and documentation in `<PIPELINE_HOME>/bia_pipeline.config`
+    If the settings file is not given as argument ( `--settings` / `-s` ), it is expected in the `<RUN_FOLDER>/bia_pipeline.config`
   
     Currently the pipeline provides two ways of preparing PE reads for the assembly.
     The default is to first merge overlapping pairs using bbmerge, trim both merged and unmerged reads, and use in the assembly merged reads, trimmed R1 and R2, as well as trimmed unpaired R1.
@@ -80,10 +80,10 @@ The NGS pipeline is run using `bia_pipeline.py` script:
 
     The script will create RUN_ID folder in the scratch-root directory (given in settings). 
     Inside there will be several directories: 
-    	SAMPLE_ID/ - one dir per sample, named after samples found in the RUN_FOLDER 
-    	fastqs/    - fastq files
-    	drmaa/     - SLURM scripts created automatically (if you are using SLURM; for debugging purposes)
-    	qc/        - qc output
+    - SAMPLE_ID/ - one dir per sample, named after samples found in the RUN_FOLDER 
+    - fastqs/    - fastq files
+    - drmaa/     - SLURM scripts created automatically (if you are using SLURM; for debugging purposes)
+    - qc/        - qc output
 
     After finishing, the sample directories will contain:
     - FASTQ files at different processing stages
@@ -97,9 +97,13 @@ The NGS pipeline is run using `bia_pipeline.py` script:
     For running the assembly using 12 concurrent threads:
 
 	`bia_pipeline.py --run_folder /incoming/RUN_XXXX_YYYY_ZZZZZ \
+    
 						    --settings /my_project/ecoli.config \
+                            
 							--target complete_run \
+                            
 							-vvv -j 12 \
+                            
 							--log_file /my_project/pipeline_run_XXX.log`
 
 
