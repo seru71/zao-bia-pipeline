@@ -5,7 +5,7 @@
 
 ## Pipeline
 
-The pipeline consists of bcl2fastq, Trimmomatic, FastQC, and SPAdes
+The pipeline consists of bcl2fastq, bbmap, Trimmomatic, FastQC, SPAdes, and QUAST
 
 
 
@@ -38,7 +38,7 @@ Install following tools:
 4. QUAST (http://bioinf.spbau.ru/quast)
 
 And if your input is not yet converted to FASTQ, install also:  
-6. bcl2fastq ()
+6. bcl2fastq (https://support.illumina.com/sequencing/sequencing_software/bcl2fastq-conversion-software.html)
 
 
 ### Reference data
@@ -81,30 +81,20 @@ The NGS pipeline is run using `bia_pipeline.py` script:
     The script will create RUN_ID folder in the scratch-root directory (given in settings). 
     Inside there will be several directories: 
     - SAMPLE_ID/ - one dir per sample, named after samples found in the RUN_FOLDER 
-    - fastqs/    - fastq files
+    - fastqs/    - FASTQ files
     - drmaa/     - SLURM scripts created automatically (if you are using SLURM; for debugging purposes)
-    - qc/        - qc output
+    - qc/        - qc output from FastQC and QUAST
 
     After finishing, the sample directories will contain:
     - FASTQ files at different processing stages
     - assembled genome
-    - FastQC reports on raw and processed FASTQs
-    - QUAST report on the assemblies
-   
+    
 
 * Typical usage
 
     For running the assembly using 12 concurrent threads:
 
-	`bia_pipeline.py --run_folder /incoming/RUN_XXXX_YYYY_ZZZZZ \
-    
-						    --settings /my_project/ecoli.config \
-                            
-							--target complete_run \
-                            
-							-vvv -j 12 \
-                            
-							--log_file /my_project/pipeline_run_XXX.log`
+	`bia_pipeline.py --run_folder /incoming/RUN_XXXX_YYYY_ZZZZZ --settings /my_project/ecoli.config --target complete_run -vvv -j 12 --log_file /my_project/pipeline_run_XXX.log`
 
 
 
