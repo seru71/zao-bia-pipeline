@@ -718,69 +718,89 @@ def clean_trimmed_fastqs():
     for f in glob.glob(os.path.join(runs_scratch_dir,'*','*.fq.gz')):
         os.remove(f)
 
-#
-# FASTQ filenames are expected to have following format:
-#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
-# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
-# The output will be written to SAMPLE_ID directory:
-#    [SAMPLE_ID]/
-#
-@jobs_limit(8)
-#@posttask(clean_trimmed_fastqs)
-@collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra/contigs.fasta')
-def assemble_trimmed(fastqs, contigs):
-    threads = 4
-    mem=8192
+def clean_assembly_dir(assembly_name):
+    """ Remove the temporary assembly files """
+    import shutil
+    for f in glob.glob(os.path.join(runs_scratch_dir,'*',name+'_assembly')):
+            print 'rm -r '+f
+            #shutil.rmtree(f)
 
-    out_dir=os.path.dirname(contigs)
-    if not os.path.isdir(out_dir):
-		os.mkdir(out_dir)
 
-    fastqs=fastqs[0]
-
-    args = "--pe1-1 {fq1} --pe1-2 {fq2} --s1 {single1} --s2 {single2} \
-		-o {out_dir} -m {mem} -t {threads} --careful \
-           ".format(fq1=fastqs[0], fq2=fastqs[1], 
-                    single1=fastqs[2], single2=fastqs[3], 
-                    out_dir=out_dir, mem=mem, threads=threads)
-
-    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
-    
-    
-    
-
-#
-# FASTQ filenames are expected to have following format:
-#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
-# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
-# The output will be written to SAMPLE_ID directory:
-#    [SAMPLE_ID]/
-#
-@jobs_limit(8)
-#@posttask(clean_trimmed_fastqs)
-@collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra/contigs.fasta')
-def assemble_merged(fastqs, contigs):
-    threads = 4
-    mem=8192
-
-    out_dir=os.path.dirname(contigs)
-    if not os.path.isdir(out_dir):
-		os.mkdir(out_dir)
+def run_spades(out_dir, fq=None, fq1=None, fq2=None, 
+					fq1_single=None, fq2_single=None, 
+					threads = 4, mem=8192):
+						
+    args = "-o {out_dir} -m {mem} -t {threads} --careful ".format(out_dir=out_dir, mem=mem, threads=threads)
+	
+	# PE inputs if provided
+    if fq1 != None and fq2 != None: 
+        args += " --pe1-1 {fq1} --pe1-2 {fq2}".format(fq1=fq1,fq2=fq2)
 		
+	# add SE inputs
+    i = 1
+    for se_input in [fq, fq1_single, fq2_single]:
+        if se_input != None:
+            args += " --s{index} {se_input}".format(index=i, se_input=se_input)
+            i = i + 1
+	
+    #print args
+    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+
+def spades_assembly(contigs_file, assembly_name, **args):
+    
+    out_dir=os.path.join(os.path.dirname(contigs_file), assembly_name)
+    if not os.path.isdir(out_dir):
+		os.mkdir(out_dir)
+        
+    run_spades(out_dir, **args)
+    
+    import shutil
+    shutil.copy(os.path.join(out_dir,'contigs.fasta'), contigs_file)
+    #shutil.rmtree(out_dir)
+
+
+#
+# FASTQ filenames are expected to have following format:
+#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
+# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
+# The output will be written to SAMPLE_ID directory:
+#    [SAMPLE_ID]/
+#
+@jobs_limit(8)
+#@posttask(clean_trimmed_fastqs)
+@posttask(lambda: clean_assembly_dir('tra_assembly'))
+@collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
+def assemble_trimmed(fastqs, contigs):
+    fastqs=fastqs[0]   
+    spades_assembly(contigs, 'tra_assembly', 
+        fq1=fastqs[0], fq2=fastqs[1], 
+        fq1_single=fastqs[2], fq2_single=fastqs[3], 
+        threads = 4, mem=8192)
+
+
+#
+# FASTQ filenames are expected to have following format:
+#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
+# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
+# The output will be written to SAMPLE_ID directory:
+#    [SAMPLE_ID]/
+#
+@jobs_limit(8)
+#@posttask(clean_trimmed_fastqs)
+@posttask(lambda: clean_assembly_dir('mra_assembly'))
+@collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
+def assemble_merged(fastqs, contigs):
     fqm=fastqs[0]
     fq1=fastqs[1][0]
     fq2=fastqs[1][1]
     fq1u=fastqs[1][2]
     # fq2u is typicaly low quality
 
-    args = "--s1 {fqm} --pe1-1 {fq1} --pe1-2 {fq2} --s2 {fq1u} \
-	    -o {out_dir} -m {mem} -t {threads} --careful \
-           ".format(fqm=fqm, fq1=fq1, fq2=fq2, fq1u=fq1u,
-                    out_dir=out_dir, mem=mem, threads=threads)
+    spades_assembly(contigs, 'mra_assembly', 
+        fqm=fqm, fq1=fq1, fq2=fq2, 
+        fq1u_single=fq1u, 
+        threads = 4, mem=8192)
 
-    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
-    
-    
 
     
 
