@@ -797,8 +797,8 @@ def assemble_merged(fastqs, contigs):
     # fq2u is typicaly low quality
 
     spades_assembly(contigs, 'mra_assembly', 
-        fqm=fqm, fq1=fq1, fq2=fq2, 
-        fq1u_single=fq1u, 
+        fq=fqm, fq1=fq1, fq2=fq2, 
+        fq1_single=fq1u, 
         threads = 4, mem=8192)
 
 
