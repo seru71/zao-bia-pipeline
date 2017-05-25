@@ -721,7 +721,7 @@ def clean_trimmed_fastqs():
 def clean_assembly_dir(assembly_name):
     """ Remove the temporary assembly files """
     import shutil
-    for f in glob.glob(os.path.join(runs_scratch_dir,'*',name+'_assembly')):
+    for f in glob.glob(os.path.join(runs_scratch_dir,'*',assembly_name+'_assembly')):
             print 'rm -r '+f
             #shutil.rmtree(f)
 
@@ -787,7 +787,7 @@ def assemble_trimmed(fastqs, contigs):
 #
 @jobs_limit(8)
 #@posttask(clean_trimmed_fastqs)
-@posttask(lambda: clean_assembly_dir('mra_assembly'))
+#@posttask(lambda: clean_assembly_dir('mra_assembly'))
 @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
 def assemble_merged(fastqs, contigs):
     fqm=fastqs[0]
