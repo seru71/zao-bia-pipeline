@@ -746,16 +746,18 @@ def run_spades(out_dir, fq=None, fq1=None, fq2=None,
     #print args
     run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
 
-def spades_assembly(contigs_file, assembly_name, **args):
+
+def spades_assembly(scaffolds_file, assembly_name, **args):
     
-    out_dir=os.path.join(os.path.dirname(contigs_file), assembly_name)
+    out_dir=os.path.join(os.path.dirname(scaffolds_file), assembly_name)
     if not os.path.isdir(out_dir):
 		os.mkdir(out_dir)
         
     run_spades(out_dir, **args)
     
     import shutil
-    shutil.copy(os.path.join(out_dir,'contigs.fasta'), contigs_file)
+    shutil.copy(os.path.join(out_dir,'scaffolds.fasta'), scaffolds_file)
+    shutil.copy(os.path.join(out_dir,'contigs.fasta'), scaffolds_file+'.contigs.fasta')
     #shutil.rmtree(out_dir)
 
 
@@ -770,9 +772,9 @@ def spades_assembly(contigs_file, assembly_name, **args):
 #@posttask(clean_trimmed_fastqs)
 @posttask(lambda: clean_assembly_dir('tra_assembly'))
 @collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
-def assemble_trimmed(fastqs, contigs):
+def assemble_trimmed(fastqs, scaffolds):
     fastqs=fastqs[0]   
-    spades_assembly(contigs, 'tra_assembly', 
+    spades_assembly(scaffolds, 'tra_assembly', 
         fq1=fastqs[0], fq2=fastqs[1], 
         fq1_single=fastqs[2], fq2_single=fastqs[3], 
         threads = 4, mem=8192)
@@ -789,14 +791,14 @@ def assemble_trimmed(fastqs, contigs):
 #@posttask(clean_trimmed_fastqs)
 #@posttask(lambda: clean_assembly_dir('mra_assembly'))
 @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
-def assemble_merged(fastqs, contigs):
+def assemble_merged(fastqs, scaffolds):
     fqm=fastqs[0]
     fq1=fastqs[1][0]
     fq2=fastqs[1][1]
     fq1u=fastqs[1][2]
     # fq2u is typicaly low quality
 
-    spades_assembly(contigs, 'mra_assembly', 
+    spades_assembly(scaffolds, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
         threads = 4, mem=8192)
@@ -861,14 +863,14 @@ def qc_reads():
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
 @merge(assemble_trimmed, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
-def qc_tr_assemblies(contigs, report_dir):
-    args = ("-o %s " % report_dir) + " ".join(contigs)
+def qc_tr_assemblies(scaffolds, report_dir):
+    args = ("-o %s " % report_dir) + " ".join(scaffolds)
     run_cmd(quast, args, dockerize=dockerize)
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
 @merge(assemble_merged, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','mr_report'))
-def qc_mr_assemblies(contigs, report_dir):
-    args = ("-o %s " % report_dir) + " ".join(contigs)
+def qc_mr_assemblies(scaffolds, report_dir):
+    args = ("-o %s " % report_dir) + " ".join(scaffolds)
     run_cmd(quast, args, dockerize=dockerize)
 
 
