@@ -728,9 +728,9 @@ def clean_assembly_dir(assembly_name):
 
 def run_spades(out_dir, fq=None, fq1=None, fq2=None, 
 					fq1_single=None, fq2_single=None, 
-					threads = 4, mem=8192):
+					threads = 4, mem_gb=8):
 						
-    args = "-o {out_dir} -m {mem} -t {threads} --careful ".format(out_dir=out_dir, mem=mem, threads=threads)
+    args = "-o {out_dir} -m {mem} -t {threads} --careful ".format(out_dir=out_dir, mem=mem_gb, threads=threads)
 	
 	# PE inputs if provided
     if fq1 != None and fq2 != None: 
@@ -744,7 +744,7 @@ def run_spades(out_dir, fq=None, fq1=None, fq2=None,
             i = i + 1
 	
     #print args
-    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+    run_cmd(spades, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem_gb*1024/threads))
 
 
 def spades_assembly(scaffolds_file, assembly_name, **args):
@@ -777,7 +777,7 @@ def assemble_trimmed(fastqs, scaffolds):
     spades_assembly(scaffolds, 'tra_assembly', 
         fq1=fastqs[0], fq2=fastqs[1], 
         fq1_single=fastqs[2], fq2_single=fastqs[3], 
-        threads = 4, mem=8192)
+        threads = 4, mem_gb=8)
 
 
 #
@@ -801,7 +801,7 @@ def assemble_merged(fastqs, scaffolds):
     spades_assembly(scaffolds, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
-        threads = 4, mem=8192)
+        threads = 4, mem_gb=8)
 
 
     
