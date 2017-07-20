@@ -294,7 +294,7 @@ if __name__ == '__main__':
         logger.info('Scratch-root setting is missing. Using current directory: %s' % scratch_root)
     
     run_id = os.path.basename(run_folder) if run_folder != None else os.path.basename(scratch_root)
-    runs_scratch_dir = os.path.join(scratch-root, run_id) if run_folder != None else scratch_root
+    runs_scratch_dir = os.path.join(scratch_root, run_id) if run_folder != None else scratch_root
     logger.info('Run\'s scratch directory: %s' % runs_scratch_dir)
       
     # optional results and fastq archive dirs  
