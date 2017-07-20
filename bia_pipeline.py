@@ -345,7 +345,7 @@ if __name__ == '__main__':
      
     
     # reference files
-    reference = os.path.join(reference_root, config.get('Resources','reference-genome'))    
+    #reference = os.path.join(reference_root, config.get('Resources','reference-genome'))    
     adapters = config.get('Resources', 'adapters-fasta')
     
     # tools
