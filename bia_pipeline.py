@@ -536,7 +536,7 @@ def bcl2fastq_conversion(run_directory, completed_flag):
     interop_dir = os.path.join(out_dir,'InterOp')
 
     # r, w, d, and p specify numbers of threads to be used for each of the concurrent subtasks of the conversion (see bcl2fastq manual) 
-    args = "-R {indir} -o {outdir} --interop-dir={interopdir} -r1 -w1 -d2 -p4 \
+    args = "-R {indir} -o {outdir} --interop-dir={interopdir} -r1 -w1 -p6 \
             ".format(indir=run_directory, outdir=out_dir, interopdir=interop_dir)
     if options.run_on_bcl_tile != None:
         args += " --tiles %s" % options.run_on_bcl_tile
