@@ -1,5 +1,5 @@
 #
-# This is an exemplary bia_pipeline.config file. 
+# This is a template bia_pipeline.config file. 
 # It contains configuration entries for the assembly pipeline.
 #
 #
@@ -16,12 +16,15 @@
 # The pipeline can start from 2 places, which is determined by uncommenting one (and only one) of the options:
 # 1) Input run-dir if the pipeline should start from bcl2fastq conversion. 
 #    The path should be absolute. The directory is expected to contain SampleSheet.csv file - the input to bcl2fastq.
-run-directory:	/ngs/prod/incoming/
+#run-directory:	/ngs/prod/incoming/
 #
-# 2) Path (GLOB expression) describing location of paired FASTQ files (relative to scratch-root). 
+# 2) Path (GLOB expression) describing location of paired FASTQ files. 
 #    Multiple lanes per sample are supported; see pipeline code for the expected naming convention.
-#    In dockerized execution mode the path is resolved relative to scratch directory. In regular execution mode the path should be absolute. 
+#    In dockerized execution mode the path is resolved relative to scratch-root directory (see below). In regular execution mode the path should be absolute. 
 #input-fastqs:	/ngs/prod/data/*.fastq.gz
+#
+# Alternatively, run-directory can be passed as commandline argument to the pipeline. Run-folder path passed on command-line takes precedence over its path in a config file.
+#
 
 
 
@@ -33,7 +36,8 @@ run-directory:	/ngs/prod/incoming/
 [Paths]
 
 # Root paths for working directory (scratch) and for reference data. Absolute paths must be provided. If scratch-root is unset, current working directory is used.
-# When pipeline starts from bcl2fastq conversion (run_folder is set), scratch-root/RUN_ID (where RUN_ID is the same as in run_directory) is created and used as run's working directory. 
+# When pipeline starts from bcl2fastq conversion (run_directory is set or provided as commandline arg), 
+# scratch-root/RUN_ID (where RUN_ID is the same as in run_directory) is created and used as run's working directory. 
 # When pipeline starts from FASTQ files, the scratch-root folder is used as a working directory.
 # In dockerized mode:
 # 1) reference-root will be mounted by docker containers with read-only access
@@ -47,8 +51,8 @@ scratch-root:       /ngs/prod/scratch
 # Optional results- and fastq-archive root directories. Absolute paths must be provided.
 # In dockerized mode, these are mounted to docker containers with RO (writing happens outside docker containers).
 # If these directories are not set, the FASTQ and/or assembly results are not archived outside the working (scratch) directory.
-#results-archive:    /ngs/prod/archive/results
-#fastq-archive:      /ngs/prod/archive/fastqs
+results-archive:    /ngs/prod/archive/results
+fastq-archive:      /ngs/prod/archive/fastqs
 
 
 # Large-capacity tmp directory (if should be different than /tmp). 
