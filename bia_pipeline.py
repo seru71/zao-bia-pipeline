@@ -261,18 +261,18 @@ if __name__ == '__main__':
     run_folder = None
     input_fastqs = None
 
-	if options.run_folder != None and 
-	    os.path.exists(options.run_folder) and 
-	    os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
+    if options.run_folder != None and \
+        os.path.exists(options.run_folder) and \
+        os.path.exists(os.path.join(options.run_folder,'SampleSheet.csv')):
 			
-		run_folder = options.run_folder
-		logger.info('Found correct run-folder path among command-line argunments. Starting from bcl2fastq conversion of: %s' % run_folder)
+        run_folder = options.run_folder
+        logger.info('Found correct run-folder path among command-line argunments. Starting from bcl2fastq conversion of: %s' % run_folder)
         
     else:
 		
         try:
-	        run_folder = config.get('Inputs','run-directory') 
-	        logger.info('Found run-folder setting. Starting from bcl2fastq conversion of %s.' % run_folder)
+            run_folder = config.get('Inputs','run-directory') 
+            logger.info('Found run-folder setting. Starting from bcl2fastq conversion of %s.' % run_folder)
             # check presence of the run folder, and sample sheet file
             if not os.path.exists(run_folder) or not os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
                 raise Exception("Missing sample sheet file: %s.\n" % os.path.join(run_folder,'SampleSheet.csv'))
