@@ -1,5 +1,5 @@
 #
-# This is an exemplary bia_pipeline.config file. 
+# This is a template bia_pipeline.config file. 
 # It contains configuration entries for the assembly pipeline.
 #
 #
@@ -16,12 +16,15 @@
 # The pipeline can start from 2 places, which is determined by uncommenting one (and only one) of the options:
 # 1) Input run-dir if the pipeline should start from bcl2fastq conversion. 
 #    The path should be absolute. The directory is expected to contain SampleSheet.csv file - the input to bcl2fastq.
-run-directory:	/prod/incoming/
+#run-directory:	/ngs/prod/incoming/
 #
-# 2) Path (GLOB expression) describing location of paired FASTQ files (relative to scratch-root). 
+# 2) Path (GLOB expression) describing location of paired FASTQ files. 
 #    Multiple lanes per sample are supported; see pipeline code for the expected naming convention.
-#    In dockerized execution mode the path is resolved relative to scratch directory. In regular execution mode the path should be absolute. 
-#input-fastqs:	/prod/data/*.fastq.gz
+#    In dockerized execution mode the path is resolved relative to scratch-root directory (see below). In regular execution mode the path should be absolute. 
+#input-fastqs:	/ngs/prod/data/*.fastq.gz
+#
+# Alternatively, run-directory can be passed as commandline argument to the pipeline. Run-folder path passed on command-line takes precedence over its path in a config file.
+#
 
 
 
@@ -33,7 +36,8 @@ run-directory:	/prod/incoming/
 [Paths]
 
 # Root paths for working directory (scratch) and for reference data. Absolute paths must be provided. If scratch-root is unset, current working directory is used.
-# When pipeline starts from bcl2fastq conversion (run_folder is set), scratch-root/RUN_ID (where RUN_ID is the same as in run_directory) is created and used as run's working directory. 
+# When pipeline starts from bcl2fastq conversion (run_directory is set or provided as commandline arg), 
+# scratch-root/RUN_ID (where RUN_ID is the same as in run_directory) is created and used as run's working directory. 
 # When pipeline starts from FASTQ files, the scratch-root folder is used as a working directory.
 # In dockerized mode:
 # 1) reference-root will be mounted by docker containers with read-only access
@@ -41,14 +45,14 @@ run-directory:	/prod/incoming/
 # 3) paths specified in sections Inputs and Resources will be resolved with respect to these root directories.
 # In regular execution mode:
 # 1) paths specified in Resources section will be resolved with respect to the reference-root directory.
-reference-root:	    /prod/reference
-scratch-root:       /prod/scratch
+reference-root:	    /ngs/prod/reference
+scratch-root:       /ngs/prod/scratch
 
 # Optional results- and fastq-archive root directories. Absolute paths must be provided.
 # In dockerized mode, these are mounted to docker containers with RO (writing happens outside docker containers).
 # If these directories are not set, the FASTQ and/or assembly results are not archived outside the working (scratch) directory.
-#results-archive:    /prod/archive/results
-#fastq-archive:      /prod/archive/fastqs
+results-archive:    /ngs/prod/archive/results
+fastq-archive:      /ngs/prod/archive/fastqs
 
 
 # Large-capacity tmp directory (if should be different than /tmp). 
@@ -75,7 +79,7 @@ scratch-root:       /prod/scratch
 # Use of the reference genome is not implemented yet
 #reference-genome:           ecoli.fa
 
-adapters-fasta:             /software/apps/Trimmomatic-0.36/adapters/NexteraPE-PE.fa
+adapters-fasta:             /ngs/software/apps/Trimmomatic-0.36/adapters/NexteraPE-PE.fa
 
 
 [Tools]
@@ -95,10 +99,10 @@ adapters-fasta:             /software/apps/Trimmomatic-0.36/adapters/NexteraPE-P
 # Similarly as in tool descriptions above, {args} and {interpreter_args} are place-holders for the respective arguments.
 #
 
-bcl2fastq:                  /software/apps/bcl2fastq-2.19.1/bin/bcl2fastq {args}
-bbmerge:                    /software/apps/bbmap-36.62/bbmerge.sh {args}
-trimmomatic:                java {interpreter_args} -jar /software/apps/Trimmomatic-0.36/trimmomatic-0.36.jar {args}
-fastqc:                     /software/apps/FastQC-0.11.5/fastqc {args}
-spades:                     /software/apps/SPAdes-3.9.0-Linux/bin/spades.py {args}
-quast:                      /software/apps/quast-4.5/quast.py {args}
+bcl2fastq:                  /ngs/software/apps/bcl2fastq-2.19.1/bin/bcl2fastq {args}
+bbmerge:                    /ngs/software/apps/BBMap-36.62/bbmap/bbmerge.sh {args}
+trimmomatic:                java {interpreter_args} -jar /ngs/software/apps/Trimmomatic-0.36/trimmomatic-0.36.jar {args}
+fastqc:                     /ngs/software/apps/FastQC-0.11.5/fastqc {args}
+spades:                     /ngs/software/apps/SPAdes-3.9.0-Linux/bin/spades.py {args}
+quast:                      /ngs/software/apps/quast-4.5/quast.py {args}
 

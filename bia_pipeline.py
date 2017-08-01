@@ -2,8 +2,8 @@
 """
 
     bia_pipeline.py
-                        --run_folder PATH
-                        [--settings PATH] 
+                        --settings PATH
+                        [--run_folder PATH]
                         [--log_file PATH]
                         [--verbose]
                         [--target_tasks]  (by default the last task in the pipeline)
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     from optparse import OptionParser
     import StringIO
 
-    parser = OptionParser(version="%prog 1.0", usage = "\n\n    %prog --settings bia_pipeline.config [--target_task TASK] [more_options]")
+    parser = OptionParser(version="%prog 1.0", usage = "\n\n    %prog --settings bia_pipeline.config [--run_folder RUN_FOLDER] [--target_task TASK] [more_options]")
     
                                 
     #
@@ -48,12 +48,16 @@ if __name__ == '__main__':
 
 
     #
-    #   pipeline
+    #   pipeline config and control
     #
     parser.add_option("-s", "--settings", dest="pipeline_settings",
                         metavar="FILE",
                         type="string",
                         help="File containing all the settings for the analysis.")                  
+    parser.add_option("-r", "--run_folder", dest="run_folder",
+                        metavar="FILE",
+                        type="string",
+                        help="Directory with run's raw data as produced by Illumina sequencer")                  
     parser.add_option("-t", "--target_tasks", dest="target_tasks",
                         action="append",
                         metavar="JOBNAME",
@@ -256,34 +260,34 @@ if __name__ == '__main__':
     # Get the pipeline input
     run_folder = None
     input_fastqs = None
-    input_bams = None
-    try:
-	run_folder = config.get('Inputs','run-directory') 
-	logger.info('Found run-directory setting. Starting from bcl2fastq conversion.')
-        # check presence of the run folder, and sample sheet file
-        if not os.path.exists(run_folder) or not os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
-            raise Exception("Missing sample sheet file: %s.\n" % os.path.join(run_folder,'SampleSheet.csv'))
-    except ConfigParser.NoOptionError:
+
+	if options.run_folder != None and 
+	    os.path.exists(options.run_folder) and 
+	    os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
+			
+		run_folder = options.run_folder
+		logger.info('Found correct run-folder path among command-line argunments. Starting from bcl2fastq conversion of: %s' % run_folder)
+        
+    else:
+		
         try:
-            input_fastqs = os.path.join(runs_scratch_dir if dockerize else '', config.get('Inputs','input-fastqs'))
-            input_fastqs_resolved = glob.glob(input_fastqs)
-            if len(input_fastqs_resolved) < 2:
-                raise Exception("Missing input FASTQs. Found %s FASTQ files in [%s].\n" % (len(input_fastqs_resolved), config.get('Inputs','input-fastqs')))
-            logger.info('Found %s input FASTQs. Starting from read trimming.' % len(input_fastqs_resolved))
+	        run_folder = config.get('Inputs','run-directory') 
+	        logger.info('Found run-folder setting. Starting from bcl2fastq conversion of %s.' % run_folder)
+            # check presence of the run folder, and sample sheet file
+            if not os.path.exists(run_folder) or not os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
+                raise Exception("Missing sample sheet file: %s.\n" % os.path.join(run_folder,'SampleSheet.csv'))
         except ConfigParser.NoOptionError:
             try:
-                input_bams = os.path.join(runs_scratch_dir if dockerize else '', config.get('Inputs','input-bams'))
-                input_bams_resolved = glob.glob(input_bams)
-                if len(input_bams_resolved) < 1:
-                    raise Exception("Missing input BAMs. Found %s BAM files in [%s].\n" % (len(input_bams_resolved), config.get('Inputs','input-bams')))
-                logger.info('Found %s input BAMs. Starting from indexing BAMs.' % len(input_bams_resolved))
+                input_fastqs = os.path.join(runs_scratch_dir if dockerize else '', config.get('Inputs','input-fastqs'))
+                input_fastqs_resolved = glob.glob(input_fastqs)
+                if len(input_fastqs_resolved) < 2:
+                    raise Exception("Missing input FASTQs. Found %s FASTQ files in [%s].\n" % (len(input_fastqs_resolved), config.get('Inputs','input-fastqs')))
+                logger.info('Found %s input FASTQs. Starting from read trimming.' % len(input_fastqs_resolved))
             except ConfigParser.NoOptionError:
-	        raise Exception('Found no valid input setting in [%s]. Please provide one of [run_directory|input-fastqs|input-bams] in the pipeline settings file.' % options.pipeline_settings)
+                raise Exception('Found no valid input setting in [%s]. Please provide one of [run_directory|input-fastqs] in the pipeline settings file.' % options.pipeline_settings)
 
 
  
-
-
     # Root paths
     
     reference_root = config.get('Paths','reference-root')
