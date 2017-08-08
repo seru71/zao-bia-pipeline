@@ -18,7 +18,7 @@ function update_myself {
     cd $cwd
     # clean local changes
     git checkout -f master
-    res=`git pull master`
+    res=`git pull`
     if [ "$res" <> "Already up-to-date." ]; then
 		# if updated, run itself and exit with the same exit code
 		./monitor_new_datasets.sh $*
