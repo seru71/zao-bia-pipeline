@@ -27,7 +27,7 @@ export DIR=$1
 new=`find $DIR/*/RTAComplete.txt -mmin -60`
 
 if [ -z "${new}" ]; then
-	log "No new runs found in $DIR"
+	log "No new runs found in ${DIR}"
     exit 0
 fi
 
@@ -54,6 +54,8 @@ cmd="${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.py \
 
 
 # Start the pipeline
-log "Starting the pipeline with command: ${cmd}"
+log "Starting the pipeline for $RUN_ID with command: ${cmd}"
 ${cmd}
-log "Pipeline finished with exit code: $?"
+log "Pipeline for run ${RUN_ID} finished with exit code: $?"
+
+exit 0
