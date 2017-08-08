@@ -9,21 +9,24 @@ WORK_DIR=/ngs/prod/scratch
 LOG_FILE=/tmp/monitor_new_dataset.log
 
 function log {
-	echo -e `date -Iseconds`" - $1"
-	}
+    echo -e `date -Iseconds`" - $1"
+}
 
-function update {
+function update_myself {
     # update myself
     cwd=`dirname "$(readlink -f "$0")"`
     cd $cwd
-    res=`git fetch`
-    if [ -z "$res" ]; then
-        echo empty    
-    else
-        echo "Res = [${res}]"
-    fi
+    # clean local changes
+    git checkout -f master
+    res=`git pull master`
+    if [ "$res" <> "Already up-to-date." ]; then
+		# if updated, run itself and exit with the same exit code
+		./monitor_new_datasets.sh $*
+		exit $?
+	fi
 }
 
+update_myself;
 
 # Check directory to be monitored
 if [ -z "$1" ] || [ ! -d $1 ]; then
