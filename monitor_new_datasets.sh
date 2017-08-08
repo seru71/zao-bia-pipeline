@@ -14,9 +14,9 @@ function log {
 
 
 # Check directory to be monitored
-if [ -z $1 -o ! -e $1 ]; then
+if [ -z "$1" ] || [ ! -d $1 ]; then
     log "Missing or incorrect path to the directory to be monitored."
-    exit(1)
+    exit 1
 fi
 
 export DIR=$1
@@ -28,7 +28,7 @@ new=`find $DIR/*/RTAComplete.txt -mmin -60`
 
 if [ -z "${new}" ]; then
 	log "No new runs found in $DIR"
-    exit(0)
+    exit 0
 fi
 
 log "Found: ${new}"
@@ -37,6 +37,11 @@ log "Found: ${new}"
 log "Configuring workspace for RUN_FOLDER [${RUN_FOLDER}] and RUN_ID [${RUN_ID}]"
 export RUN_FOLDER=`dirname ${new}`
 export RUN_ID=`basename ${RUN_FOLDER}`
+
+if [ -e ${WORK_DIR}/${RUN_ID}/pipeline ]; then
+    log "Found existing pipeline directory in [${WORK_DIR}/${RUN_ID}/pipeline]. Exiting."
+    exit 2
+fi
 
 git clone ${REPO} ${WORK_DIR}/${RUN_ID}/pipeline
 cp ${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.config.template ${WORK_DIR}/${RUN_ID}/pipeline.config
