@@ -10,6 +10,18 @@ LOG_FILE=/tmp/monitor_new_dataset.log
 
 function log {
 	echo -e `date -Iseconds`" - $1"
+	}
+
+function update {
+    # update myself
+    cwd=`dirname "$(readlink -f "$0")"`
+    cd $cwd
+    res=`git fetch`
+    if [ -z "$res" ]; then
+        echo empty    
+    else
+        echo "Res = [${res}]"
+    fi
 }
 
 
