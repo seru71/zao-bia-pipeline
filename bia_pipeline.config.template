@@ -51,8 +51,8 @@ scratch-root:       /ngs/prod/scratch
 # Optional results- and fastq-archive root directories. Absolute paths must be provided.
 # In dockerized mode, these are mounted to docker containers with RO (writing happens outside docker containers).
 # If these directories are not set, the FASTQ and/or assembly results are not archived outside the working (scratch) directory.
-results-archive:    /ngs/prod/archive/results
-fastq-archive:      /ngs/prod/archive/fastqs
+results-archive:    /mnt/data/miseq_fastq/results
+fastq-archive:      /mnt/data/miseq_fastq	
 
 
 # Large-capacity tmp directory (if should be different than /tmp). 
