@@ -772,7 +772,7 @@ def spades_assembly(scaffolds_file, assembly_name, **args):
 # The output will be written to SAMPLE_ID directory:
 #    [SAMPLE_ID]/
 #
-@jobs_limit(8)
+@jobs_limit(1)
 #@posttask(clean_trimmed_fastqs)
 @posttask(lambda: clean_assembly_dir('tra_assembly'))
 @collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
@@ -781,7 +781,7 @@ def assemble_trimmed(fastqs, scaffolds):
     spades_assembly(scaffolds, 'tra_assembly', 
         fq1=fastqs[0], fq2=fastqs[1], 
         fq1_single=fastqs[2], fq2_single=fastqs[3], 
-        threads = 4, mem_gb=8)
+        threads = 4, mem_gb=12)
 
 
 #
@@ -791,7 +791,7 @@ def assemble_trimmed(fastqs, scaffolds):
 # The output will be written to SAMPLE_ID directory:
 #    [SAMPLE_ID]/
 #
-@jobs_limit(8)
+@jobs_limit(1)
 #@posttask(clean_trimmed_fastqs)
 #@posttask(lambda: clean_assembly_dir('mra_assembly'))
 @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
@@ -805,7 +805,7 @@ def assemble_merged(fastqs, scaffolds):
     spades_assembly(scaffolds, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
-        threads = 4, mem_gb=8)
+        threads = 4, mem_gb=12)
 
 
     
