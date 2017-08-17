@@ -745,28 +745,27 @@ def map_trimmed_reads(fastqs, bam_file):
 
 
 
-def call_variants_freebayes(bams_list, vcf, ref_genome):
+def call_variants_freebayes(bams_list, vcf, ref_genome, bam_list_filename='/tmp/bam_list'):
     
     threads = 1
     mem = 4096
     
-    bam_list_file = '/tmp/bam_list'
-    with open(bam_list_file,'w') as f:
+    with open(bam_list_filename,'w') as f:
         for bam in bams_list:
             f.write(bam + '\n')
     
     args = args = " -f {ref} -v {vcf} -L {bam_list} \
-        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_file)
+        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename)
             
     run_cmd(freebayes, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
     
-    os.remove(bam_list_file)
+    os.remove(bam_list_filename)
 
 
 @transform(map_trimmed_reads, suffix(".bam"), ".fb.vcf")
 def call_variants_on_trimmed(bam, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
-    call_variants_freebayes([bam], vcf, reference)
+    call_variants_freebayes([bam], vcf, reference, bam+'.lst')
 
 
 @collate(map_trimmed_reads, formatter(), "{subpath[0][0]}/multisample.fb.vcf")
