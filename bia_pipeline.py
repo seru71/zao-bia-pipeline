@@ -354,9 +354,12 @@ if __name__ == '__main__':
     
     # tools
     bcl2fastq = config.get('Tools','bcl2fastq')
-    trimmomatic = config.get('Tools', 'trimmomatic') 
-    bbmerge = config.get('Tools', 'bbmerge') 
     fastqc = config.get('Tools', 'fastqc')
+    bbmerge = config.get('Tools', 'bbmerge') 
+    trimmomatic = config.get('Tools', 'trimmomatic') 
+    bwa = config.get('Tools', 'bwa') 
+    samtools = config.get('Tools', 'samtools') 
+    freebayes = config.get('Tools', 'freebayes') 
     spades = config.get('Tools', 'spades') 
     quast = config.get('Tools', 'quast')
 
@@ -415,6 +418,43 @@ def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
                                  drmaa_session = drmaa_session)
     except error_drmaa_job as err:
         raise Exception("\n".join(map(str, ["Failed to run:", cmd, err, stdout, stderr])))
+
+
+""" 
+Currently not available in dockerized mode. 
+Only default job scheduling params of run_command available when executing via SLURM.
+"""
+def run_piped_command(*args):
+    run_locally=True
+    retain_job_scripts = True
+    job_script_dir = os.path.join(runs_scratch_dir, "drmaa")	
+    cpus=1
+    mem_per_cpu=1024
+    walltime="24:00:00"
+ 
+    stdout, stderr = "", ""
+    job_options = "--ntasks=1 \
+                   --cpus-per-task={cpus} \
+                   --mem-per-cpu={mem} \
+                   --time={time} \
+                  ".format(cpus=cpus, mem=int(1.2*mem_per_cpu), time=walltime)
+	
+    full_cmd = expand_piped_command(*args)
+	
+    try:
+        stdout, stderr = run_job(full_cmd.strip(), 
+                                 job_other_options=job_options,
+                                 run_locally = run_locally, 
+                                 retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
+                                 logger=logger, working_directory=os.getcwd(),
+                                 drmaa_session = drmaa_session)
+    except error_drmaa_job as err:
+        raise Exception("\n".join(map(str, ["Failed to run:", full_cmd, err, stdout, stderr])))
+	
+def expand_piped_command(cmd, cmd_args, interpreter_args=None, *args):
+	expanded_cmd = cmd.format(args=cmd_args, interpreter_args = interpreter_args if interpreter_args!=None else "")
+	expanded_cmd += (" | "+expand_piped_command(*args)) if len(args) > 0 else ""
+	return expanded_cmd
 
 
 def log_task_progress(task_name, completed=True):
@@ -634,10 +674,100 @@ def trim_merged_reads(input_fqs, trimmed_fq):
 
 
 
-#
-#
-# Assemble the reads 
-# 
+
+
+
+    #8888888888888888888888888888888888888888888888888888
+    #
+    #                   M a p p i n g 
+    #
+    #8888888888888888888888888888888888888888888888888888
+
+
+
+
+def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, threads=1):
+	bwa_args = "mem -t {threads} {ref} {fq1} \
+	           ".format(threads=threads, ref=ref_genome, fq1=fq1)
+	if fq2 != None:
+		bwa_args += fq2
+
+	samtools_args = "sort -o {out}".format(out=output_bam)
+
+	run_piped_command(bwa, bwa_args, None,
+	                  samtools, samtools_args, None)
+
+def merge_bams(out_bam, *in_bams):
+	threads = 1
+	mem = 4096
+	
+	args = "merge %s" % out_bam
+	for bam in in_bams:
+		args += (" "+bam)
+		
+	run_cmd(samtools, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+	
+	
+def map_reads(fastq_list, ref_genome, output_bam):
+    
+    tmp_bams = [ output_bam+str(i) for i in range(0, len(fastq_list)) ]
+    for i in range(0, len(fastq_list)):
+		if isinstance(fastq_list[i], tuple):
+			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i][0], fastq_list[i][1])
+		else:
+			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i])   
+    
+    merge_bams(output_bam, *tmp_bams)
+    
+    for f in tmp_bams:
+		  os.remove(f)
+
+
+
+@jobs_limit(1)
+@transform(trim_reads, formatter(), "{subpath[0][0]}/{subdir[0][0]}.bam")
+def map_trimmed_reads(fastqs, bam_file):
+    """ Maps trimmed paired and unpaired reads. Both merged pairs and not-merged, paired and unpaired R1 are included """
+    fq1=fastqs[0]
+    fq2=fastqs[1]
+    fq1u=fastqs[2]
+    fq2u=fastqs[3]
+
+    map_reads([(fq1,fq2),fq1u, fq2u], reference, bam_file)
+
+
+
+
+
+    #8888888888888888888888888888888888888888888888888888
+    #
+    #         V a r i a n t   c a l l i n g
+    #
+    #8888888888888888888888888888888888888888888888888888
+
+
+
+def call_variants_freebayes(bam, vcf, ref_genome):
+    
+    threads = 1
+    mem = 4096
+    args = " -f {ref} -v {vcf} {bam} \
+           ".format(ref=ref_genome, vcf=vcf, bam=bam)
+    run_cmd(lofreq, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+
+
+@transform(map_trimmed_reads, suffix(".bam"), ".fb.vcf")
+def call_variants_on_host_filtered(bam, vcf):
+	""" Call variants using lofreq* on host filtered mapped reads """
+	call_variants_freebayes(bam, vcf, reference)
+
+
+
+    #8888888888888888888888888888888888888888888888888888
+    #
+    #                  A s s e m b l y 
+    #
+    #8888888888888888888888888888888888888888888888888888
 
 
 def clean_trimmed_fastqs():
