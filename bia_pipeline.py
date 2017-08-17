@@ -745,20 +745,34 @@ def map_trimmed_reads(fastqs, bam_file):
 
 
 
-def call_variants_freebayes(bam, vcf, ref_genome):
+def call_variants_freebayes(bams_list, vcf, ref_genome):
     
     threads = 1
     mem = 4096
-    args = " -f {ref} -v {vcf} {bam} \
-           ".format(ref=ref_genome, vcf=vcf, bam=bam)
+    
+	bam_list_file = '/tmp/bam_list'
+	with open(bam_list_file,'w') as f:
+		for bam in bams_list:
+			f.write(bam + '\n')
+	
+	args = args = " -f {ref} -v {vcf} -L {bam_list} \
+		".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_file)
+			
     run_cmd(lofreq, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+    
+    os.remove(bam_list_file)
 
 
 @transform(map_trimmed_reads, suffix(".bam"), ".fb.vcf")
 def call_variants_on_trimmed(bam, vcf):
 	""" Call variants using freebayes on trimmed (not merged) reads """
-	call_variants_freebayes(bam, vcf, reference)
+	call_variants_freebayes([bam], vcf, reference)
 
+
+@collate(map_trimmed_reads, formatter(), "{subpath[0][0]}/multisample.fb.vcf")
+def jointcall_variants_on_trimmed(bams, vcf):
+	""" Call variants using freebayes on trimmed (not merged) reads """
+	call_variants_freebayes(bams, vcf, reference)
 
 
     #8888888888888888888888888888888888888888888888888888
