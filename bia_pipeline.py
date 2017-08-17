@@ -768,7 +768,7 @@ def call_variants_on_trimmed(bam, vcf):
     call_variants_freebayes([bam], vcf, reference, bam+'.lst')
 
 
-@collate(map_trimmed_reads, formatter(), "{subpath[0][0]}/multisample.fb.vcf")
+@merge(map_trimmed_reads, os.path.join(runs_scratch_dir, "multisample.fb.vcf"))
 def jointcall_variants_on_trimmed(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, reference)
