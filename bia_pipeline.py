@@ -723,11 +723,9 @@ def map_reads(fastq_list, ref_genome, output_bam):
 		  os.remove(f)
 
 
-
-@jobs_limit(1)
 @transform(trim_reads, formatter(), "{subpath[0][0]}/{subdir[0][0]}.bam")
 def map_trimmed_reads(fastqs, bam_file):
-    """ Maps trimmed paired and unpaired reads. Both merged pairs and not-merged, paired and unpaired R1 are included """
+    """ Maps trimmed paired and unpaired reads. """
     fq1=fastqs[0]
     fq2=fastqs[1]
     fq1u=fastqs[2]
@@ -757,8 +755,8 @@ def call_variants_freebayes(bam, vcf, ref_genome):
 
 
 @transform(map_trimmed_reads, suffix(".bam"), ".fb.vcf")
-def call_variants_on_host_filtered(bam, vcf):
-	""" Call variants using lofreq* on host filtered mapped reads """
+def call_variants_on_trimmed(bam, vcf):
+	""" Call variants using freebayes on trimmed (not merged) reads """
 	call_variants_freebayes(bam, vcf, reference)
 
 
