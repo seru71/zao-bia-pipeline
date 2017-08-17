@@ -758,7 +758,7 @@ def call_variants_freebayes(bams_list, vcf, ref_genome):
 	args = args = " -f {ref} -v {vcf} -L {bam_list} \
 		".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_file)
 			
-    run_cmd(lofreq, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+    run_cmd(freebayes, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_file)
 
