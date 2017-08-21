@@ -717,7 +717,7 @@ def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
     # This would most likely result in unpaired FQs ending up in different read group ids, and in consequence, being genotyped separately
     if read_groups==None:
         s_ids = [ os.path.basename(s[0][:-len('_R1.fq.gz')] if isinstance(s, tuple) else s[:-len('fq.gz')]) for s in fastq_list ]
-        read_groups = [ '@RG\tID:{sid}:\tSM:{sid}\tLB:{sid}'.format(sid=s) for s in s_ids]
+        read_groups = [ '@RG\tID:{sid}\tSM:{sid}\tLB:{sid}'.format(sid=s) for s in s_ids]
     
     tmp_bams = [ output_bam+str(i) for i in range(0, len(fastq_list)) ]
     for i in range(0, len(fastq_list)):
@@ -744,9 +744,9 @@ def map_trimmed_reads(fastqs, bam_file, sample_id):
     fq1u=fastqs[2]
     fq2u=fastqs[3]
 
-    read_groups = ['@RG\tID:{rgid}:\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id),
-        '@RG\tID:{rgid}:\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U1"),
-        '@RG\tID:{rgid}:\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U2"),]
+    read_groups = ['@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id),
+        '@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U1"),
+        '@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U2"),]
 
     map_reads([(fq1,fq2),fq1u, fq2u], reference, bam_file, read_groups)
 
