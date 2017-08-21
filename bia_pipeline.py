@@ -686,24 +686,12 @@ def trim_merged_reads(input_fqs, trimmed_fq):
 
 
 
-def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, threads=1):
+def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, threads=1):
 	
-	lib_name = os.path.basename(fq1)[:-len('.fq.gz')]
-	if (fq2 != None):
-		lib_name = lib.name[:-len('_R1')]
-	
-	#
-	# this is unsafe, because sample IDs containing _ will get truncated
-	#
-	
-	sample_id = lib_name[:lib_name.find('_')]
-	
-	rg = '@RG\tID:{rgid}:\tSM:{sm}\tLB:{lb} \
-        '.format(rgid=sample_id, sm=sample_id, lb=lib_name)
-	
-	
-	bwa_args = "mem -t {threads} -R {rg} {ref} {fq1} \
-	           ".format(threads=threads, rg=rg, ref=ref_genome, fq1=fq1)
+	bwa_args = "mem -t {threads} {rg} {ref} {fq1} \
+	            ".format(threads=threads, 
+                        rg="-R '%s'" % read_group if read_group!=None else "", 
+                        ref=ref_genome, fq1=fq1)
 	if fq2 != None:
 		bwa_args += fq2
 
@@ -723,14 +711,20 @@ def merge_bams(out_bam, *in_bams):
 	run_cmd(samtools, args, dockerize=dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
 	
 	
-def map_reads(fastq_list, ref_genome, output_bam):
+def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
+    
+    # If no read groups is provided, we could make up default ones based on fq filenames.
+    # This would most likely result in unpaired FQs ending up in different read group ids, and in consequence, being genotyped separately
+    if read_groups==None:
+        s_ids = [ os.path.basename(s[0][:-len('_R1.fq.gz')] if isinstance(s, tuple) else s[:-len('fq.gz')]) for s in fastq_list ]
+        read_groups = [ '@RG\tID:{sid}:\tSM:{sid}\tLB:{sid}'.format(sid=s) for s in s_ids]
     
     tmp_bams = [ output_bam+str(i) for i in range(0, len(fastq_list)) ]
     for i in range(0, len(fastq_list)):
 		if isinstance(fastq_list[i], tuple):
-			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i][0], fastq_list[i][1])
+			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i][0], fastq_list[i][1], read_groups[i])
 		else:
-			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i])   
+			bwa_map_and_sort(tmp_bams[i], ref_genome, fastq_list[i], read_groups[i])   
     
     merge_bams(output_bam, *tmp_bams)
     
@@ -738,15 +732,23 @@ def map_reads(fastq_list, ref_genome, output_bam):
 		  os.remove(f)
 
 
-@transform(trim_reads, formatter(), "{subpath[0][0]}/{subdir[0][0]}.bam")
-def map_trimmed_reads(fastqs, bam_file):
+#@transform(trim_reads, formatter(), "{subpath[0][0]}/{subdir[0][0]}.bam")
+@transform(trim_reads, 
+            formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_L\d\d\d_R[12](_unpaired)?\.fq\.gz$"), 
+            "{subpath[0][0]}/{subdir[0][0]}.bam",
+            "{SAMPLE_ID[0]}")
+def map_trimmed_reads(fastqs, bam_file, sample_id):
     """ Maps trimmed paired and unpaired reads. """
     fq1=fastqs[0]
     fq2=fastqs[1]
     fq1u=fastqs[2]
     fq2u=fastqs[3]
 
-    map_reads([(fq1,fq2),fq1u, fq2u], reference, bam_file)
+    read_groups = ['@RG\tID:{rgid}:\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id),
+        '@RG\tID:{rgid}:\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U1"),
+        '@RG\tID:{rgid}:\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U2"),]
+
+    map_reads([(fq1,fq2),fq1u, fq2u], reference, bam_file, read_groups)
 
 
 
