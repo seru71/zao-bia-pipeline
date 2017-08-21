@@ -6,7 +6,8 @@ For testing and manual use please have a look at https://github.com/seru71/bia_p
 
 ## Pipeline
 
-The pipeline consists of bcl2fastq, FastQC, bbmap, Trimmomatic, SPAdes, and QUAST
+The assembly pipeline consists of bcl2fastq, bbmap, Trimmomatic, FastQC, SPAdes, and QUAST
+Mapping to reference genome with BWA and joint- and single-sample genotyping with FreeBayes is also available.
 
 
 ## Setup
@@ -17,7 +18,7 @@ Environment for the pipeline is set up using ansible playbook: https://github.co
 
 * Starting the pipeline
 
-	The NGS pipeline is started by a cron job when new data appears. 
+	The assembly pipeline is started by a cron job when new data appears. 
 	The exact commandline used is in the `monitor_new_datasets.sh`, which should be added to crontab.
 	`monitor_new_datasets.sh` takes one argument - path to a folder where new runfolders are saved by the sequencer.
 
@@ -29,12 +30,19 @@ Environment for the pipeline is set up using ansible playbook: https://github.co
     - fastqs/    - raw FASTQ files created by bcl2fastq
     - drmaa/     - SLURM scripts created automatically (if you are using SLURM; for debugging purposes)
     - qc/        - qc output from FastQC and QUAST
+    
+    and possibly a file:
+    - multisample.fb.vcf - variants joint called on all samples.
 
-    After finishing, the sample directories will contain:
+    The sample directories will contain:
     - FASTQ files at different processing stages
     - scaffolds in SAMPLE_ID/SAMPLE_ID_mra.fasta
     - contigs in SAMPLE_ID/SAMPLE_ID_mra_contigs.fasta
     - genome assembly files in SAMPLE_ID/SAMPLE_ID_mra (if not removed automatically)
+    
+    Optionally, when mapping is executed the sample directory will contain:
+    - BAM file with reads aligned to the reference genome
+    - VCF file with variants
     
     If archiving of fastqs/results is on (default; for details see pipeline.config.template), the fastqs/results & QC are copied to preconfigured archive location.
     The scratch directory can be cleared automatically by uncommenting `#@posttask(cleanup_files)` over `complete_run` definition in the pipeline, or by a cron job.
@@ -49,9 +57,4 @@ Environment for the pipeline is set up using ansible playbook: https://github.co
 	3. Check the QC reports and final results in the archive. 
 	If clearing the scratch dir hasn't been uncommented in the pipeline, intermediate results will be kept in the scratch dir.
 	
-	
-    
-
-
-
 
