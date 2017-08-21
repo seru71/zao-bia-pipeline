@@ -687,8 +687,23 @@ def trim_merged_reads(input_fqs, trimmed_fq):
 
 
 def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, threads=1):
-	bwa_args = "mem -t {threads} {ref} {fq1} \
-	           ".format(threads=threads, ref=ref_genome, fq1=fq1)
+	
+	lib_name = os.path.basename(fq1)[:-len('.fq.gz')]
+	if (fq2 != None):
+		lib_name = lib.name[:-len('_R1')]
+	
+	#
+	# this is unsafe, because sample IDs containing _ will get truncated
+	#
+	
+	sample_id = lib_name[:lib_name.find('_')]
+	
+	rg = '@RG\tID:{rgid}:\tSM:{sm}\tLB:{lb} \
+        '.format(rgid=sample_id, sm=sample_id, lb=lib_name)
+	
+	
+	bwa_args = "mem -t {threads} -R {rg} {ref} {fq1} \
+	           ".format(threads=threads, rg=rg, ref=ref_genome, fq1=fq1)
 	if fq2 != None:
 		bwa_args += fq2
 
