@@ -26,6 +26,9 @@ function update_myself {
 	fi
 }
 
+# become user ngs
+su - ngs
+
 update_myself;
 
 # Check directory to be monitored
@@ -49,9 +52,9 @@ fi
 log "Found: ${new}"
 
 # Configure workspace for the pipeline
-log "Configuring workspace for RUN_FOLDER [${RUN_FOLDER}] and RUN_ID [${RUN_ID}]"
 export RUN_FOLDER=`dirname ${new}`
 export RUN_ID=`basename ${RUN_FOLDER}`
+log "Configuring workspace for RUN_FOLDER [${RUN_FOLDER}] and RUN_ID [${RUN_ID}]"
 
 if [ -e ${WORK_DIR}/${RUN_ID}/pipeline ]; then
     log "Found existing pipeline directory in [${WORK_DIR}/${RUN_ID}/pipeline]. Exiting."
