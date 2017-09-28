@@ -879,30 +879,25 @@ def qc_mr_assemblies(scaffolds, report_dir):
 
 
 
-#def archive_results():
-    ## if optional results_archive was not provided - do nothing
-    #if results_archive == None: return
-    #arch_path = os.path.join(results_archive, run_id)
-    #if not os.path.exists(arch_path): 
-        #os.mkdir(arch_path)
+def archive_results():
+    # if optional results_archive was not provided - do nothing
+    if results_archive == None: return
+    arch_path = os.path.join(results_archive, run_id)
+    if not os.path.exists(arch_path): 
+        os.mkdir(arch_path)
         
-    #run_cmd("cp %s/*/*.gatk.bam %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
-    #run_cmd("cp %s/*/*.gatk.bam.gene_coverage* %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
-    #run_cmd("cp %s/*/*.exome.vcf %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
-    #run_cmd("cp %s/*.multisample.gvcf %s" % (runs_scratch_dir, results_archive),
-            #"", run_locally=True)
-    #run_cmd("cp -r %s/qc %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd("cp %s/*/*.fasta %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd("cp -r %s/qc %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
 
 
-#def cleanup_files():
-    #run_cmd("rm -rf {dir}/*/*.recal_data.csv {dir}/*/*.realign* {dir}/*/*.dedup* \
-            #{dir}/*.multisample.indel.model* {dir}/*.multisample.snp.model* \
-            #{dir}/*/*.log {dir}/*.multisample.recalibratedSNPS.rawIndels.vcf* \
-            #{dir}/*.multisample.recalibrated.vcf* \
-            #".format(dir=runs_scratch_dir), "", run_locally=True)
+def cleanup_files():
+	pass
+#    run_cmd("rm -rf {dir}/*/mra_assembly \
+#            {dir}/*/*merged*.fq.gz \
+#            ".format(dir=runs_scratch_dir), "", run_locally=True)
 
 
-#@posttask(archive_results, cleanup_files)
+@posttask(archive_results, cleanup_files)
 @follows(qc_reads, qc_mr_assemblies)
 def complete_run():
     pass
