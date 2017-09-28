@@ -26,8 +26,7 @@ function update_myself {
 	fi
 }
 
-# become user ngs
-su - ngs
+sudo -i -u ngs bash << EOF
 
 update_myself;
 
@@ -45,7 +44,7 @@ export DIR=$1
 new=`find $DIR/*/RTAComplete.txt -mmin -60`
 
 if [ -z "${new}" ]; then
-	log "No new runs found in ${DIR}"
+    log "No new runs found in ${DIR}"
     exit 0
 fi
 
