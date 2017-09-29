@@ -3,6 +3,9 @@
 # Script monitoring an input directory for new Illumina runs
 #
 
+#sudo -i -u ngs bash << EOF
+
+
 # Constants
 REPO=https://github.com/seru71/zao-bia-pipeline.git
 WORK_DIR=/ngs/prod/scratch
@@ -25,8 +28,6 @@ function update_myself {
 		exit $?
 	fi
 }
-
-sudo -i -u ngs bash << EOF
 
 update_myself;
 
@@ -72,7 +73,9 @@ cmd="${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.py \
 
 # Start the pipeline
 log "Starting the pipeline for $RUN_ID with command: ${cmd}"
-${cmd}
+sudo -u ngs -i ${cmd}
 log "Pipeline for run ${RUN_ID} finished with exit code: $?"
 
 exit 0
+
+#EOF
