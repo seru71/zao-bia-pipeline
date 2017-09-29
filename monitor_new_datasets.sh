@@ -15,6 +15,10 @@ function log {
     echo -e `date -Iseconds`" - $1"
 }
 
+function run_as_ngs {
+    sudo -u ngs -i $*
+}
+
 function update_myself {
     # update myself
     cwd=`dirname "$(readlink -f "$0")"`
@@ -61,8 +65,8 @@ if [ -e ${WORK_DIR}/${RUN_ID}/pipeline ]; then
     exit 2
 fi
 
-git clone ${REPO} ${WORK_DIR}/${RUN_ID}/pipeline
-cp ${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.config.template ${WORK_DIR}/${RUN_ID}/pipeline.config
+run_as_ngs git clone ${REPO} ${WORK_DIR}/${RUN_ID}/pipeline
+run_as_ngs cp ${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.config.template ${WORK_DIR}/${RUN_ID}/pipeline.config
 	
 cmd="${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.py \
 -s ${WORK_DIR}/${RUN_ID}/pipeline.config \
