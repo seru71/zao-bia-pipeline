@@ -1,5 +1,5 @@
 
-# Bacterial Isolate Assembly (BIA) Pipeline for fully automated use.
+# Bacterial Isolate Assembly (BIA) Pipeline for fully automated setup
 
 For testing and manual use please have a look at https://github.com/seru71/bia_pipeline
 
@@ -11,7 +11,7 @@ The pipeline consists of bcl2fastq, FastQC, bbmap, Trimmomatic, SPAdes, and QUAS
 
 ## Setup
 
-Environment for the pipeline is set up using ansible playbook: https://github.com/seru71/ngs-compute-ansible
+Environment for the pipeline is set up using ansible playbook: https://github.com/seru71/zao-pipeline-compute-ansible
 
 ## Usage
 
