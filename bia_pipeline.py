@@ -643,9 +643,9 @@ def merge_reads(inputs, outputs):
 	
 	hist=outputs[0].replace('_merged.fq.gz','.hist')
 	args='in1={fq1} in2={fq2} \
-		  out={fqm} outu1={u1} outu2={u2} \
-		  ihist={hist} adapters={adapters} \
-		  '.format(fq1=inputs[0], fq2=inputs[1],
+	      out={fqm} outu1={u1} outu2={u2} \
+	      ihist={hist} adapters={adapters} \
+	      threads=1'.format(fq1=inputs[0], fq2=inputs[1],
 					fqm=outputs[0], u1=outputs[1], u2=outputs[2],
 					hist=hist, adapters=adapters)
 		  
@@ -772,7 +772,7 @@ def spades_assembly(scaffolds_file, assembly_name, **args):
 # The output will be written to SAMPLE_ID directory:
 #    [SAMPLE_ID]/
 #
-@jobs_limit(1)
+@jobs_limit(4)
 #@posttask(clean_trimmed_fastqs)
 @posttask(lambda: clean_assembly_dir('tra_assembly'))
 @collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
@@ -781,7 +781,7 @@ def assemble_trimmed(fastqs, scaffolds):
     spades_assembly(scaffolds, 'tra_assembly', 
         fq1=fastqs[0], fq2=fastqs[1], 
         fq1_single=fastqs[2], fq2_single=fastqs[3], 
-        threads = 4, mem_gb=12)
+        threads = 4, mem_gb=8)
 
 
 #
@@ -791,7 +791,7 @@ def assemble_trimmed(fastqs, scaffolds):
 # The output will be written to SAMPLE_ID directory:
 #    [SAMPLE_ID]/
 #
-@jobs_limit(1)
+@jobs_limit(4)
 #@posttask(clean_trimmed_fastqs)
 #@posttask(lambda: clean_assembly_dir('mra_assembly'))
 @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
@@ -805,7 +805,7 @@ def assemble_merged(fastqs, scaffolds):
     spades_assembly(scaffolds, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
-        threads = 4, mem_gb=12)
+        threads = 4, mem_gb=8)
 
 
     
