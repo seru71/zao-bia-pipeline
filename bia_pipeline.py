@@ -360,88 +360,6 @@ if __name__ == '__main__':
     spades = config.get('Tools', 'spades') 
     quast = config.get('Tools', 'quast')
 
-#88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
-
-#   Logger
-
-
-#88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
-
-
-
-if __name__ == '__main__':
-    import logging
-    import logging.handlers
-
-    MESSAGE = 15
-    logging.addLevelName(MESSAGE, "MESSAGE")
-
-    def setup_std_logging (logger, log_file, verbose):
-        """
-        set up logging using programme options
-        """
-        class debug_filter(logging.Filter):
-            """
-            Ignore INFO messages
-            """
-            def filter(self, record):
-                return logging.INFO != record.levelno
-
-        class NullHandler(logging.Handler):
-            """
-            for when there is no logging
-            """
-            def emit(self, record):
-                pass
-
-        # We are interesting in all messages
-        logger.setLevel(logging.DEBUG)
-        has_handler = False
-
-        # log to file if that is specified
-        if log_file:
-            handler = logging.FileHandler(log_file, delay=False)
-            handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)6s - %(message)s"))
-            handler.setLevel(MESSAGE)
-            logger.addHandler(handler)
-            has_handler = True
-
-        # log to stderr if verbose
-        if verbose:
-            stderrhandler = logging.StreamHandler(sys.stderr)
-            stderrhandler.setFormatter(logging.Formatter("    %(message)s"))
-            stderrhandler.setLevel(logging.DEBUG)
-            if log_file:
-                stderrhandler.addFilter(debug_filter())
-            logger.addHandler(stderrhandler)
-            has_handler = True
-
-        # no logging
-        if not has_handler:
-            logger.addHandler(NullHandler())
-
-
-    #
-    #   set up log
-    #
-    module_name = "exome"
-    logger = logging.getLogger(module_name)
-    setup_std_logging(logger, options.log_file, options.verbose)
-
-    #
-    #   Allow logging across Ruffus pipeline
-    #
-    def get_logger (logger_name, args):
-        return logger
-
-    from ruffus.proxy_logger import *
-    (logger_proxy,
-     logging_mutex) = make_shared_logger_and_proxy (get_logger,
-                                                    module_name,
-                                                    {})
-
-
-
 
 
 
@@ -499,10 +417,8 @@ def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
         raise Exception("\n".join(map(str, ["Failed to run:", cmd, err, stdout, stderr])))
 
 
-def get_sample_ids():
-    """ Provides meaningful result only after HaplotypeCaller step"""
-    files = glob.glob(os.path.join(runs_scratch_dir,'*','*.gvcf'))
-    return [ os.path.splitext(os.path.basename(f))[0] for f in files ]
+def log_task_progress(task_name, completed=True):
+    logger.info('Task [%s] %s.' % (task_name, 'completed' if completed else 'started'))
 
 
 def produce_fastqc_report(fastq_file, output_dir=None):
@@ -534,6 +450,7 @@ from ruffus import *
 @follows(mkdir(runs_scratch_dir), mkdir(os.path.join(runs_scratch_dir,'fastqs')))
 @files(run_folder, os.path.join(runs_scratch_dir,'fastqs','completed'))
 @posttask(touch_file(os.path.join(runs_scratch_dir,'fastqs','completed')))
+@posttask(lambda: log_task_progress('bcl2fastq_conversion', completed=True))
 def bcl2fastq_conversion(run_directory, completed_flag):
     """ Run bcl2fastq conversion and create fastq files in the run directory"""
     out_dir = os.path.join(runs_scratch_dir,'fastqs')
@@ -551,6 +468,7 @@ def bcl2fastq_conversion(run_directory, completed_flag):
 
 @active_if(run_folder != None and fastq_archive != None)
 @transform(bcl2fastq_conversion, formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), str(fastq_archive)+"/{RUN_ID[0]}")
+@posttask(lambda: log_task_progress('archive_fastqs', completed=True))
 def archive_fastqs(completed_flag, archive_dir):
     """ Archive fastqs """    
     fq_dir = os.path.dirname(completed_flag)
@@ -579,6 +497,7 @@ def archive_fastqs(completed_flag, archive_dir):
 @transform(os.path.join(runs_scratch_dir,'fastqs','*.fastq.gz') if run_folder != None else input_fastqs,
            formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'), 
            runs_scratch_dir+'/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
+@posttask(lambda: log_task_progress('link_fastqs', completed=True))
 def link_fastqs(fastq_in, fastq_out):
     """Make working directory for every sample and link fastq files in"""
     if not os.path.exists(os.path.dirname(fastq_out)):
@@ -603,6 +522,7 @@ def link_fastqs(fastq_in, fastq_out):
 @collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), 
                       [r'\1/\2_\3_R1.fq.gz', r'\1/\2_\3_R2.fq.gz', 
                        r'\1/\2_\3_R1_unpaired.fq.gz', r'\1/\2_\3_R2_unpaired.fq.gz'])
+@posttask(lambda: log_task_progress('trim_reads', completed=True))
 def trim_reads(inputs, outfqs):
     """ Trim reads """
     args = "PE -phred33 -threads 1 \
@@ -638,6 +558,7 @@ def trim_reads(inputs, outfqs):
 # 
 @active_if(run_folder != None or input_fastqs != None)
 @collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), [r'\1/\2_merged.fq.gz', r'\1/\2_notmerged_R1.fq.gz', r'\1/\2_notmerged_R2.fq.gz'])
+@posttask(lambda: log_task_progress('merge_reads', completed=True))
 def merge_reads(inputs, outputs):
 	""" Merge overlapping reads """
 	
@@ -667,6 +588,7 @@ def merge_reads(inputs, outputs):
            formatter(None, '.+/(?P<PREFIX>[^/]+)\.fq\.gz$', '.+/(?P<PREFIX>[^/]+)\.fq\.gz$'), 
            ['{path[1]}/{PREFIX[1]}.trimmed.fq.gz', '{path[2]}/{PREFIX[2]}.trimmed.fq.gz',
             '{path[1]}/{PREFIX[1]}.unpaired.fq.gz', '{path[2]}/{PREFIX[2]}.unpaired.fq.gz'])
+@posttask(lambda: log_task_progress('trim_notmerged_pairs', completed=True))
 def trim_notmerged_pairs(inputs, outfqs):
     """ Trim nonoverlapping reads """
     args = "PE -phred33 -threads 1 \
@@ -692,6 +614,7 @@ def trim_notmerged_pairs(inputs, outfqs):
 #
 @active_if(run_folder != None or input_fastqs != None)
 @transform(merge_reads, suffix('_merged.fq.gz'), '_merged.trimmed.fq.gz')
+@posttask(lambda: log_task_progress('trim_merged_reads', completed=True))
 def trim_merged_reads(input_fqs, trimmed_fq):
     """ Trim merged overlapping reads """
 
@@ -773,9 +696,9 @@ def spades_assembly(scaffolds_file, assembly_name, **args):
 #    [SAMPLE_ID]/
 #
 @jobs_limit(4)
-#@posttask(clean_trimmed_fastqs)
-@posttask(lambda: clean_assembly_dir('tra_assembly'))
 @collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
+@posttask(lambda: clean_assembly_dir('tra_assembly'))
+@posttask(lambda: log_task_progress('assemble_trimmed', start=False))
 def assemble_trimmed(fastqs, scaffolds):
     fastqs=fastqs[0]   
     spades_assembly(scaffolds, 'tra_assembly', 
@@ -792,9 +715,9 @@ def assemble_trimmed(fastqs, scaffolds):
 #    [SAMPLE_ID]/
 #
 @jobs_limit(4)
-#@posttask(clean_trimmed_fastqs)
-#@posttask(lambda: clean_assembly_dir('mra_assembly'))
 @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
+@posttask(lambda: log_task_progress('assemble_merged', completed=True))
+#@posttask(lambda: clean_assembly_dir('mra_assembly'))
 def assemble_merged(fastqs, scaffolds):
     fqm=fastqs[0]
     fq1=fastqs[1][0]
@@ -857,6 +780,7 @@ def qc_notmerged_pairs(input_fastqs, reports):
 
 #@follows(qc_raw_reads, qc_trimmed_reads)
 @follows(qc_raw_reads, qc_merged_reads, qc_notmerged_pairs)
+@posttask(lambda: log_task_progress('qc_reads', completed=True))
 def qc_reads():
     pass
 
@@ -867,12 +791,14 @@ def qc_reads():
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
 @merge(assemble_trimmed, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
+@posttask(lambda: log_task_progress('qc_tr_assemblies', completed=True))
 def qc_tr_assemblies(scaffolds, report_dir):
     args = ("-o %s " % report_dir) + " ".join(scaffolds)
     run_cmd(quast, args, dockerize=dockerize)
 
 @follows(mkdir(os.path.join(runs_scratch_dir,'qc')), mkdir(os.path.join(runs_scratch_dir,'qc','assembly_qc')))
 @merge(assemble_merged, os.path.join(runs_scratch_dir, 'qc', 'assembly_qc','mr_report'))
+@posttask(lambda: log_task_progress('qc_mr_assemblies', completed=True))
 def qc_mr_assemblies(scaffolds, report_dir):
     args = ("-o %s " % report_dir) + " ".join(scaffolds)
     run_cmd(quast, args, dockerize=dockerize)
@@ -897,8 +823,9 @@ def cleanup_files():
 #            ".format(dir=runs_scratch_dir), "", run_locally=True)
 
 
-@posttask(archive_results, cleanup_files)
 @follows(qc_reads, qc_mr_assemblies)
+@posttask(archive_results, cleanup_files)
+@posttask(lambda: log_task_progress('complete_run', completed=True))
 def complete_run():
     pass
 
