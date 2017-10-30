@@ -30,7 +30,7 @@ function update_myself {
 	fi
 }
 
-update_myself;
+update_myself $*
 
 # Check directory to be monitored
 if [ -z "$1" ] || [ ! -d $1 ]; then
