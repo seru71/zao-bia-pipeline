@@ -13,7 +13,7 @@ function log {
 }
 
 function run_as_ngs {
-    sudo -u ngs -i $*
+    echo "$*" | sudo -u ngs -i bash
 }
 
 function update_myself {
@@ -75,7 +75,7 @@ cmd="${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.py \
 
 # Start the pipeline
 log "Starting the pipeline for $RUN_ID with command: ${cmd}"
-run_as_ngs ${cmd}
+run_as_ngs "${cmd}"
 log "Pipeline for run ${RUN_ID} finished with exit code: $?"
 
 exit 0
