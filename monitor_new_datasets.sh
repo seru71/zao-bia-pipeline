@@ -25,12 +25,12 @@ function update_myself {
     res=`git pull`
     if [ "$res" != "Already up-to-date." ]; then
 		# if updated, run itself and exit with the same exit code
-		./monitor_new_datasets.sh $*
+		./monitor_new_datasets.sh "$*"
 		exit $?
 	fi
 }
 
-update_myself $*
+update_myself "$*"
 
 # Check directory to be monitored
 if [ -z "$1" ] || [ ! -d $1 ]; then
