@@ -34,7 +34,7 @@ update_myself;
 
 # Check directory to be monitored
 if [ -z "$1" ] || [ ! -d $1 ]; then
-    log "Missing or incorrect path to the directory to be monitored."
+    log "Missing or incorrect path to the directory to be monitored: [$1]"
     exit 1
 fi
 
