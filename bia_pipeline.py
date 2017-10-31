@@ -732,6 +732,8 @@ def assemble_merged(fastqs, scaffolds):
 
 
     
+# -------------------------------------------------------------------- #    
+    
 
 #
 #
@@ -805,26 +807,61 @@ def qc_mr_assemblies(scaffolds, report_dir):
 
 
 
+# -------------------------------------------------------------------- #
+
+
+# 
+#
+# Archiving results
+#
+
+import shutil
+
+@active_if(results_archive != None)
+@follows(mkdir(os.path.join(results_archive, run_id)))
+@transform(assemble_merged, formatter(), os.path.join(results_archive, run_id, '{basename[0]}{ext[0]}'))
+def archive_fasta(fasta, archived_fasta):      
+    shutil.copyfile(fasta, archived_fasta)
+    shutil.copyfile(fasta+'.contigs.fasta', archived_fasta+'.contigs.fasta')
+    
+    
+@active_if(results_archive != None)
+@follows(mkdir(os.path.join(results_archive, run_id)))
+@transform(qc_mr_assemblies, formatter(), os.path.join(results_archive, run_id, 'qc'))
+def archive_qc(quast_report_dir, archived_qc_dir):
+    qc_dir = os.path.dirname(os.path.dirname(quast_report_dir))
+    run_cmd("cp -r %s %s" % (qc_dir, archived_qc_dir), "", dockerize=dockerize, run_locally=True)
+
+@active_if(results_archive != None)
+@follows(mkdir(os.path.join(results_archive, run_id)))
+@transform([os.path.join(runs_scratch_dir, 'pipeline')], 
+           formatter(), 
+           [os.path.join(results_archive, run_id, 'pipeline'), 
+            os.path.join(results_archive, run_id, 'pipeline', 'pipeline.config')])
+def archive_pipeline(pipeline_dir, archived_paths):
+    run_cmd("cp -r %s %s" % (pipeline_dir, archived_paths[0]), "", dockerize=dockerize, run_locally=True)
+    shutil.copyfile(pipeline_dir+'.config', archived_paths[1])
+
+
+@active_if(results_archive != None)
+@follows(archive_fasta, archive_qc, archive_pipeline)
+@posttask(lambda: log_task_progress('archive_results', completed=True))
 def archive_results():
-    # if optional results_archive was not provided - do nothing
-    if results_archive == None: return
-    arch_path = os.path.join(results_archive, run_id)
-    if not os.path.exists(arch_path): 
-        os.mkdir(arch_path)
-        
-    run_cmd("cp %s/*/*.fasta %s" % (runs_scratch_dir,arch_path), "", dockerize=dockerize, run_locally=True)
-    run_cmd("cp -r %s/qc %s" % (runs_scratch_dir,arch_path), "", dockerize=dockerize, run_locally=True)
+    pass
+
+
+
 
 
 def cleanup_files():
-	pass
+    pass
 #    run_cmd("rm -rf {dir}/*/mra_assembly \
 #            {dir}/*/*merged*.fq.gz \
 #            ".format(dir=runs_scratch_dir), "", run_locally=True)
 
 
-@follows(qc_reads, qc_mr_assemblies)
-@posttask(archive_results, cleanup_files)
+@follows(qc_reads, qc_mr_assemblies, archive_results)
+@posttask(cleanup_files)
 @posttask(lambda: log_task_progress('complete_run', completed=True))
 def complete_run():
     pass
