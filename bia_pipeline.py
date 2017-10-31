@@ -812,8 +812,8 @@ def archive_results():
     if not os.path.exists(arch_path): 
         os.mkdir(arch_path)
         
-    run_cmd("cp %s/*/*.fasta %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
-    run_cmd("cp -r %s/qc %s" % (runs_scratch_dir,arch_path), "", run_locally=True)
+    run_cmd("cp %s/*/*.fasta %s" % (runs_scratch_dir,arch_path), "", dockerize=dockerize, run_locally=True)
+    run_cmd("cp -r %s/qc %s" % (runs_scratch_dir,arch_path), "", dockerize=dockerize, run_locally=True)
 
 
 def cleanup_files():
