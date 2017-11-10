@@ -238,132 +238,14 @@ if __name__ == '__main__':
     #                                             #
     #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     
-    if not os.path.exists(options.pipeline_settings): 
-        raise Exception('Provided settings file [%s] does not exist or cannot be read.' % options.pipeline_settings)
-
-    import ConfigParser
-    config = ConfigParser.ConfigParser()
-    config.read(options.pipeline_settings)
-
-
-
-    # Should dockerized execution be used?
-    dockerize = True
-    try:
-        docker_bin = config.get('Docker','docker-binary')
-        logger.info('Found docker-binary setting. Using dockerized execution mode.')
-    except ConfigParser.NoOptionError:
-        logger.info('Docker-binary setting is missing. Using regular execution mode.')
-        dockerize = False
- 
-
-    # Get the pipeline input
-    run_folder = None
-    input_fastqs = None
-
-    if options.run_folder != None and \
-        os.path.exists(options.run_folder) and \
-        os.path.exists(os.path.join(options.run_folder,'SampleSheet.csv')):
-			
-        run_folder = options.run_folder
-        logger.info('Found correct run-folder path among command-line argunments. Starting from bcl2fastq conversion of: %s' % run_folder)
-        
-    else:
-		
-        try:
-            run_folder = config.get('Inputs','run-directory') 
-            logger.info('Found run-folder setting. Starting from bcl2fastq conversion of %s.' % run_folder)
-            # check presence of the run folder, and sample sheet file
-            if not os.path.exists(run_folder) or not os.path.exists(os.path.join(run_folder,'SampleSheet.csv')):
-                raise Exception("Missing sample sheet file: %s.\n" % os.path.join(run_folder,'SampleSheet.csv'))
-        except ConfigParser.NoOptionError:
-            try:
-                input_fastqs = os.path.join(runs_scratch_dir if dockerize else '', config.get('Inputs','input-fastqs'))
-                input_fastqs_resolved = glob.glob(input_fastqs)
-                if len(input_fastqs_resolved) < 2:
-                    raise Exception("Missing input FASTQs. Found %s FASTQ files in [%s].\n" % (len(input_fastqs_resolved), config.get('Inputs','input-fastqs')))
-                logger.info('Found %s input FASTQs. Starting from read trimming.' % len(input_fastqs_resolved))
-            except ConfigParser.NoOptionError:
-                raise Exception('Found no valid input setting in [%s]. Please provide one of [run_directory|input-fastqs] in the pipeline settings file.' % options.pipeline_settings)
-
-
- 
-    # Root paths
+    from pipeline import PipelineConfig
+    cfg = PipelineConfig(logger)
+    cfg.set_runfolder(options.run_folder)
+    cfg.load_setting_from_file(options.pipeline_settings)
+    cfg.load_setting_from_JSON(" ######################## ")
     
-    reference_root = config.get('Paths','reference-root')
-    scratch_root = os.getcwd()
-    try:
-        scratch_root   = config.get('Paths','scratch-root')
-    except ConfigParser.NoOptionError:
-        logger.info('Scratch-root setting is missing. Using current directory: %s' % scratch_root)
-    
-    run_id = os.path.basename(run_folder) if run_folder != None else os.path.basename(scratch_root)
-    runs_scratch_dir = os.path.join(scratch_root, run_id) if run_folder != None else scratch_root
-    logger.info('Run\'s scratch directory: %s' % runs_scratch_dir)
-      
-    # optional results and fastq archive dirs  
-    results_archive = None
-    try:
-        results_archive = config.get('Paths','results-archive')
-    except ConfigParser.NoOptionError:
-        logger.info('No results-archive provided. Results will not be archived outside of the run\'s scratch directory.')
-    
-    fastq_archive = None
-    try:
-        fastq_archive = config.get('Paths','fastq-archive')
-    except ConfigParser.NoOptionError:
-        logger.info('No fastq-archive provided. Fastq files will not be archived outside of the run\'s scratch directory.')
-
-    
-    # optional /tmp dir
-    tmp_dir = None
-    try:
-        tmp_dir = config.get('Paths','tmp-dir')
-    except ConfigParser.NoOptionError:
-        logger.info('No tmp-dir provided. %s\'s /tmp will be used.' % ('Container' if dockerize else 'Execution host'))
-    
-
-    if dockerize:
-        # Docker args
-        docker_args = config.get('Docker', 'docker-args')
-        docker_args += " -v " + ":".join([run_folder, run_folder,"ro"])
-        docker_args += " -v " + ":".join([reference_root,reference_root,"ro"])
-    
-        # Mount archive dirs as files from them are read (linked fastqs, gvcfs). 
-        # Archiving is not performed by docker, so no write access should be needed.
-        if fastq_archive != None:
-            docker_args += " -v " + ":".join([fastq_archive,fastq_archive,"ro"])
-        if results_archive != None:
-            docker_args += " -v " + ":".join([results_archive,results_archive,"ro"])
-    
-        # Tmp, if should be different than the default  
-        if tmp_dir != None: 
-            docker_args += " -v " + ":".join([tmp_dir,tmp_dir,"rw"])
-            
-        docker_args += " -v " + ":".join([runs_scratch_dir,runs_scratch_dir,"rw"])
-        docker_args += " -w " + runs_scratch_dir
-        docker = " ".join([docker_bin, docker_args]) 
-    
-    # set the default value if the tmp-dir was unset
-    tmp_dir = "/tmp" if tmp_dir==None else tmp_dir
-     
-    
-    # reference files
-    #reference = os.path.join(reference_root, config.get('Resources','reference-genome'))    
-    adapters = config.get('Resources', 'adapters-fasta')
-    
-    # tools
-    bcl2fastq = config.get('Tools','bcl2fastq')
-    fastqc = config.get('Tools', 'fastqc')
-    bbmerge = config.get('Tools', 'bbmerge') 
-    trimmomatic = config.get('Tools', 'trimmomatic') 
-    bwa = config.get('Tools', 'bwa') 
-    samtools = config.get('Tools', 'samtools') 
-    freebayes = config.get('Tools', 'freebayes') 
-    spades = config.get('Tools', 'spades') 
-    quast = config.get('Tools', 'quast')
-
-
+   
+   
 
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
