@@ -15,21 +15,6 @@
 #
 
 
-# 8888888888888888888888888888888888888888
-#
-#   Per-sample config of the pipeline
-#
-# 8888888888888888888888888888888888888888
-
-
-
-class SampleTable:
-    
-    def get_sample_configs:
-        # returns a dict with sample_ID : JSON 
-        return {}
-
-
 
 
 
@@ -59,7 +44,7 @@ def check_mandatory_options (options, mandatory_options, helpstr):
                      ", ".join(missing_options),
                      helpstr))
     
- def parse_cli_args():
+def parse_cli_args():
     
     from optparse import OptionParser
     import StringIO
@@ -156,6 +141,10 @@ def check_mandatory_options (options, mandatory_options, helpstr):
 #
 # 8888888888888888888888888888888888888888
 
+import sys
+import logging
+import logging.handlers
+
 
 def setup_std_logging (logger, log_file, verbose):
     """
@@ -203,8 +192,6 @@ def setup_std_logging (logger, log_file, verbose):
 
 
 def setup_logging(log_file, verbosity):
-    import logging
-    import logging.handlers
 
     MESSAGE = 15
     logging.addLevelName(MESSAGE, "MESSAGE")
@@ -215,6 +202,48 @@ def setup_logging(log_file, verbosity):
 
     return logger
 
+    
+   
+
+
+# 8888888888888888888888888888888888888888
+#
+#   Per-sample config of the pipeline
+#
+# 8888888888888888888888888888888888888888
+
+
+
+class SampleTable:
+    
+    def get_sample_configs(self, sample_ids):
+        """ returns a dict with sample_ID : string. 
+        The string is a JSON key:value list of run settings for the sample.
+        Among supported keys are: target_task (string), num_jobs (integer), ..."""
+        
+        return {s:'{"target_tasks":["assemble_merged"]}' for s in sample_ids}
+
+
+
+def read_sample_ids_from_samplesheet():
+    
+    sample_ids = []
+    with open(os.path.join(options.run_folder, 'SampleSheet.csv')) as ss:
+        
+        lines = [l.strip() for l in ss.readlines()]
+        header_idx = lines.index('[Data]')+1
+        
+        # find index of sample ID (most likely 0)
+        header = lines[header_idx].split(',')
+        sample_id_index = header.index('Sample_ID')
+                
+        for l in lines[header_idx+1:len(lines)]:
+            lsplit = l.split(',')
+            if len(lsplit) == len(header):
+                sample_ids.append(lsplit[sample_id_index])
+        
+    return sample_ids    
+    
     
    
 # 88888888888888888888888888888888888888888
@@ -240,39 +269,39 @@ if __name__ == '__main__':
         return logger
 
     from ruffus.proxy_logger import *
-    (logger_proxy, logging_mutex) = 
-        make_shared_logger_and_proxy(get_logger, logger.get_name(), {})
+    (logger_proxy, logging_mutex) = \
+        make_shared_logger_and_proxy(get_logger, logger.name, {})
         
 
-    #
-    # TODO
-    #
-    # run bcl2fastq and archive fastqs first?
-    #
 
-
+    sample_ids = read_sample_ids_from_samplesheet()
 
     st = SampleTable()
-    cfgs = st.get_sample_configs()
+    cfgs = st.get_sample_configs(sample_ids)
     
-    
-    from pipeline import PipelineConfig, tasks
-    import drmaa
-    drmaa_session = drmaa.Session()
-    drmaa_session.initialize()
-
     # group by configs
     cfgs_groups = {}
     for k, v in cfgs.iteritems():
-        cfgs_groups[v] = cfgs_groups.setdefault(v, []).append(k)
+        cfgs_groups.setdefault(v, []).append(k)
 
+    
+    import pipeline.global_vars
+    
+    import drmaa
+    pipeline.global_vars.drmaa_session = drmaa.Session()
+    pipeline.global_vars.drmaa_session.initialize()
 
+    from ruffus import pipeline_printout, pipeline_printout_graph, pipeline_run
+    from pipeline.pipeline_configurator import PipelineConfig
+    
+    
     for (cfg_group_idx, cfg_group) in enumerate(cfgs_groups.keys()):
        
-        cfg = PipelineConfig(logger) 
-        cfg.set_runfolder(options.run_folder)
-        cfg.load_setting_from_file(options.pipeline_settings)
-        cfg.load_setting_from_JSON(cfg_group) # cfg_group is the group identifier and JSON string at the same time
+        pipeline.global_vars.cfg = PipelineConfig() 
+        pipeline.global_vars.cfg.set_logger(logger)
+        pipeline.global_vars.cfg.set_runfolder(options.run_folder)
+        pipeline.global_vars.cfg.load_settings_from_file(options.pipeline_settings)
+        pipeline.global_vars.cfg.load_settings_from_JSON(cfg_group) # cfg_group is the group identifier and JSON string at the same time
     
 
         #
@@ -281,9 +310,12 @@ if __name__ == '__main__':
         #
         #
 
+        from pipeline.tasks import *
+
+
         if options.just_print:
             
-            print "SAMPLE_GROUP_" + cfg_group_idx + ":"
+            print "SAMPLE_GROUP_" + str(cfg_group_idx) + ":"
             
             pipeline_printout(sys.stdout, cfg.target_tasks, options.forced_tasks,
                             gnu_make_maximal_rebuild_mode = options.rebuild_mode,
@@ -292,7 +324,9 @@ if __name__ == '__main__':
 
         elif options.flowchart:
                         
-            pipeline_printout_graph (   open("SAMPLE_GROUP_"+cfg_group_idx+"_"+options.flowchart, "w"),
+            pipeline_printout_graph ( open("SAMPLE_GROUP_" + \
+                                            str(cfg_group_idx) + "_" + \
+                                            options.flowchart, "w"),
                                     # use flowchart file name extension to decide flowchart format
                                     #   e.g. svg, jpg etc.
                                     os.path.splitext(options.flowchart)[1][1:],
@@ -301,13 +335,13 @@ if __name__ == '__main__':
                                     no_key_legend = not options.key_legend_in_graph)
         else:        
             pipeline_run(cfg.target_tasks, options.forced_tasks,
-                            multithread     = cfg.jobs,
+                            multithread     = cfg.num_jobs,
                             logger          = logger,
                             verbose         = options.verbose,
                             gnu_make_maximal_rebuild_mode = options.rebuild_mode,
                             checksum_level  = 0)
     
        
-    drmaa_session.exit()
+    global_vars.drmaa_session.exit()
 
        
