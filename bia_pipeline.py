@@ -507,7 +507,7 @@ def bcl2fastq_conversion(run_directory, completed_flag):
 
 
 @active_if(run_folder != None and fastq_archive != None)
-@transform(bcl2fastq_conversion, formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), str(fastq_archive)+"/{RUN_ID[0]}")
+@transform(bcl2fastq_conversion, formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), os.path.join(fastq_archive, "{RUN_ID[0]}", "fastq"))
 @posttask(lambda: log_task_progress('archive_fastqs', completed=True))
 def archive_fastqs(completed_flag, archive_dir):
     """ Archive fastqs """    
@@ -976,8 +976,8 @@ def qc_mr_assemblies(scaffolds, report_dir):
 import shutil
 
 @active_if(results_archive != None)
-@follows(mkdir(os.path.join(results_archive, run_id)))
-@transform(assemble_merged, formatter(), os.path.join(results_archive, run_id, '{basename[0]}{ext[0]}'))
+@follows(mkdir(os.path.join(results_archive, run_id, 'fasta')))
+@transform(assemble_merged, formatter(), os.path.join(results_archive, run_id, 'fasta', '{basename[0]}{ext[0]}'))
 def archive_fasta(fasta, archived_fasta):      
     shutil.copyfile(fasta, archived_fasta)
     shutil.copyfile(fasta+'.contigs.fasta', archived_fasta+'.contigs.fasta')
