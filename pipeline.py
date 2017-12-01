@@ -221,7 +221,12 @@ class SampleTable:
         The string is a JSON key:value list of run settings for the sample.
         Among supported keys are: target_task (string), num_jobs (integer), ..."""
         
-        return {s:'{"target_tasks":["assemble_merged"]}' for s in sample_ids}
+        d = {s:'{"target_tasks":["bcl2fastq_conversion"]}' for s in sample_ids}
+        
+        d[sample_ids[0]] = '{"target_tasks":["link_fastqs"]}'
+        d[sample_ids[1]] = '{"target_tasks":["link_fastqs"]}'
+        
+        return d
 
 
 
@@ -243,8 +248,90 @@ def read_sample_ids_from_samplesheet():
                 sample_ids.append(lsplit[sample_id_index])
         
     return sample_ids    
+   
     
+def make_fastq_globs_from_sample_ids(sample_ids, fastq_dir):
+    suffix = "_S[1-9]*_L001_R[12]_001.fastq.gz"
+    return [os.path.join(fastq_dir, sid+suffix) for sid in sample_ids ]
+        
+        
+        
+        
+from ruffus import *
+        
+def assemble_pipeline(name, cfg):
     
+        # assemble the pipeline 
+        p = Pipeline(name=name)
+        
+        bcl2fastq_conversion_task = p.transform(bcl2fastq_conversion, 
+                        cfg.run_folder, formatter(), 
+                        os.path.join(cfg.runs_scratch_dir,'fastqs','completed'), 
+                        cfg)\
+                .follows(mkdir(cfg.runs_scratch_dir))\
+                .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'fastqs')))\
+                .posttask(touch_file(os.path.join(cfg.runs_scratch_dir,'fastqs','completed')))\
+                -posttask(lambda: log_task_progress(cfg, 'bcl2fastq_conversion', completed=True))
+
+
+        archive_fastq_task = p.transform(archive_fastqs, 
+                                    bcl2fastq_conversion_task,
+                                    formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), 
+                                    str(cfg.fastq_archive)+"/{RUN_ID[0]}")\
+                            .active_if(cfg.fastq_archive != None)\
+                            .posttask(lambda: log_task_progress(cfg, 'archive_fastqs', completed=True))
+    
+        
+        link_fastqs_task = p.transform(link_fastqs,
+                                    cfg.input_fastqs,
+                                    formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'),
+                                    cfg.runs_scratch_dir+'/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')\
+                            .follows(archive_fastqs_task)\
+                            .jobs_limit(1)\
+                            .posttask(lambda: log_task_progress(cfg, 'link_fastqs', completed=True)
+                                    
+                                   
+        trim_fastqs_task = p.collate(trim_fastqs, 
+                                    link_fastqs_task,
+                                    regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'),
+                                    [r'\1/\2_\3_R1.fq.gz', r'\1/\2_\3_R2.fq.gz', 
+                                    r'\1/\2_\3_R1_unpaired.fq.gz', r'\1/\2_\3_R2_unpaired.fq.gz'],
+                                    cfg)\
+                            .posttask(lambda: log_task_progress(cfg, 'trim_reads', completed=True))
+   
+        
+
+        merge_reads_task = p.collate(merge_reads,
+                                    link_fastqs,
+                                    regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), 
+                                    [r'\1/\2_merged.fq.gz', r'\1/\2_notmerged_R1.fq.gz', r'\1/\2_notmerged_R2.fq.gz'],
+                                    cfg)\
+                            .posttask(lambda: log_task_progress(cfg, 'merge_reads', completed=True))
+
+
+        trim_notmerged_pairs_task = 
+            p.transform(trim_notmerged_pairs, 
+                        merge_reads,
+                        formatter(None, '.+/(?P<PREFIX>[^/]+)\.fq\.gz$', '.+/(?P<PREFIX>[^/]+)\.fq\.gz$'), 
+                        ['{path[1]}/{PREFIX[1]}.trimmed.fq.gz', '{path[2]}/{PREFIX[2]}.trimmed.fq.gz',
+                        '{path[1]}/{PREFIX[1]}.unpaired.fq.gz', '{path[2]}/{PREFIX[2]}.unpaired.fq.gz'],
+                        cfg)\
+            .posttask(lambda: log_task_progress(cfg, 'trim_notmerged_pairs', completed=True))
+                                                
+        
+        
+        trim_merged_reads_task = 
+            p.transform(trim_merged_reads, 
+                        merge_reads,
+                        suffix('_merged.fq.gz'), 
+                        '_merged.trimmed.fq.gz',
+                        cfg)
+                .posttask(lambda: log_task_progress(cfg, 'trim_merged_reads', completed=True))
+   
+   
+   
+   
+   
    
 # 88888888888888888888888888888888888888888
 #
@@ -285,48 +372,54 @@ if __name__ == '__main__':
         cfgs_groups.setdefault(v, []).append(k)
 
     
-    import pipeline.global_vars
-    
     import drmaa
-    pipeline.global_vars.drmaa_session = drmaa.Session()
-    pipeline.global_vars.drmaa_session.initialize()
+    drmaa_session = drmaa.Session()
+    drmaa_session.initialize()
 
-    from ruffus import pipeline_printout, pipeline_printout_graph, pipeline_run
     from pipeline.pipeline_configurator import PipelineConfig
-    
-    
+
+
     for (cfg_group_idx, cfg_group) in enumerate(cfgs_groups.keys()):
-       
-        pipeline.global_vars.cfg = PipelineConfig() 
-        pipeline.global_vars.cfg.set_logger(logger)
-        pipeline.global_vars.cfg.set_runfolder(options.run_folder)
-        pipeline.global_vars.cfg.load_settings_from_file(options.pipeline_settings)
-        pipeline.global_vars.cfg.load_settings_from_JSON(cfg_group) # cfg_group is the group identifier and JSON string at the same time
+              
+              
+        # 
+        # TODO
+        #
+        # check the order. It makes a difference as settings can be overridden
+        #
+         
+        cfg = PipelineConfig() 
+        cfg.drmaa_session = drmaa_session
+        cfg.set_logger(logger)
+        cfg.set_runfolder(options.run_folder)
+        cfg.load_settings_from_file(options.pipeline_settings)
+        cfg.load_settings_from_JSON(cfg_group) # cfg_group is the group identifier and JSON string at the same time
+
+        fastqs = make_fastq_globs_from_sample_ids(
+                    cfgs_groups[cfg_group],
+                    os.path.join(cfg.runs_scratch_dir, "fastqs")
+                 )
+        cfg.set_input_fastqs(fastqs)
     
-
-        #
-        #
-        # task definitions should use e.g. cfg.reference
-        #
-        #
-
-        from pipeline.tasks import *
-
-
+        
+        p = assemble_pipeline("SAMPLE_GROUP_" + str(cfg_group_idx), cfg)                         
+        
+        
         if options.just_print:
             
-            print "SAMPLE_GROUP_" + str(cfg_group_idx) + ":"
-            
-            pipeline_printout(sys.stdout, cfg.target_tasks, options.forced_tasks,
+            print "\n\n\nSAMPLE_GROUP_" + str(cfg_group_idx) + \
+                "[" + cfg_group + "] :"
+                            
+            p.printout(sys.stdout, pipeline.global_vars.cfg.target_tasks, options.forced_tasks,
                             gnu_make_maximal_rebuild_mode = options.rebuild_mode,
                             verbose=options.verbose, verbose_abbreviated_path=0,
                             checksum_level = 0)
 
         elif options.flowchart:
                         
-            pipeline_printout_graph ( open("SAMPLE_GROUP_" + \
-                                            str(cfg_group_idx) + "_" + \
-                                            options.flowchart, "w"),
+            p.printout_graph ( open("SAMPLE_GROUP_" + \
+                                    str(cfg_group_idx) + "_" + \
+                                    options.flowchart, "w"),
                                     # use flowchart file name extension to decide flowchart format
                                     #   e.g. svg, jpg etc.
                                     os.path.splitext(options.flowchart)[1][1:],
@@ -334,14 +427,15 @@ if __name__ == '__main__':
                                     gnu_make_maximal_rebuild_mode = options.rebuild_mode,
                                     no_key_legend = not options.key_legend_in_graph)
         else:        
-            pipeline_run(cfg.target_tasks, options.forced_tasks,
-                            multithread     = cfg.num_jobs,
-                            logger          = logger,
-                            verbose         = options.verbose,
-                            gnu_make_maximal_rebuild_mode = options.rebuild_mode,
-                            checksum_level  = 0)
+            p.run(cfg.target_tasks, 
+                  options.forced_tasks,
+                  multithread     = pipeline.global_vars.cfg.num_jobs,
+                  logger          = logger,
+                  verbose         = options.verbose,
+                  gnu_make_maximal_rebuild_mode = options.rebuild_mode,
+                  checksum_level  = 0)
     
        
-    global_vars.drmaa_session.exit()
+    drmaa_session.exit()
 
        

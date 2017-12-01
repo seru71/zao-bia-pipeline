@@ -25,6 +25,8 @@ class PipelineConfig:
 
     def __init__(self):
         
+        self.drmaa_session = None
+        
         self.dockerize = True
         
         self.logger = None
@@ -74,6 +76,9 @@ class PipelineConfig:
             raise Exception("Incorrect runfolder\'s path [%s] or missing SampleSheet file." % run_folder)
    
 
+    def set_input_fastqs(self, fastqs):
+        self.input_fastqs = fastqs
+    
     
     def load_settings_from_file(self, cfg_file):
         

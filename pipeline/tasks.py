@@ -4,7 +4,6 @@ import sys
 import os
 import glob
 
-from global_vars import cfg, drmaa_session
 
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
@@ -31,11 +30,16 @@ Examples of correct commands:
     cmd = "java {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
     cmd = "java -XmX4G {interpreter_args} -jar myjarfile.jar {args} -extras extra_arg
 """
-def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
+def run_cmd(cfg, cmd, args, interpreter_args=None, dockerize=None, run_locally=True,
             cpus=1, mem_per_cpu=1024, walltime='24:00:00', 
-            retain_job_scripts = True, job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")):
+            retain_job_scripts = True, job_script_dir = None):
     
-    full_cmd = ("{docker} "+cmd).format(docker = docker if dockerize else "",
+    if job_script_dir is None:
+        job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")
+    
+    if dockerize is None: dockerize = cfg.dockerize
+    
+    full_cmd = ("{docker} "+cmd).format(docker = cfg.docker if dockerize else "",
                                         args=args, 
                                         interpreter_args = interpreter_args if interpreter_args!=None else "")
 
@@ -52,7 +56,7 @@ def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
                                  run_locally = run_locally, 
                                  retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
                                  logger=cfg.logger, working_directory=os.getcwd(),
-                                 drmaa_session = drmaa_session)
+                                 drmaa_session = cfg.drmaa_session)
     except error_drmaa_job as err:
         raise Exception("\n".join(map(str, ["Failed to run:", cmd, err, stdout, stderr])))
 
@@ -61,7 +65,7 @@ def run_cmd(cmd, args, dockerize, interpreter_args=None, run_locally=True,
 Currently not available in dockerized mode. 
 Only default job scheduling params of run_command available when executing via SLURM.
 """
-def run_piped_command(*args):
+def run_piped_command(cfg, *args):
     run_locally=True
     retain_job_scripts = True
     job_script_dir = os.path.join(cfg.runs_scratch_dir, "drmaa")	
@@ -83,8 +87,8 @@ def run_piped_command(*args):
                                  job_other_options=job_options,
                                  run_locally = run_locally, 
                                  retain_job_scripts = retain_job_scripts, job_script_directory = job_script_dir,
-                                 logger=cfg.logger, working_directory=os.getcwd(),
-                                 drmaa_session = drmaa_session)
+                                 logger=global_vars.cfg.logger, working_directory=os.getcwd(),
+                                 drmaa_session = global_vars.cfg.drmaa_session)
     except error_drmaa_job as err:
         raise Exception("\n".join(map(str, ["Failed to run:", full_cmd, err, stdout, stderr])))
 	
@@ -94,7 +98,7 @@ def expand_piped_command(cmd, cmd_args, interpreter_args=None, *args):
 	return expanded_cmd
 
 
-def log_task_progress(task_name, completed=True):
+def log_task_progress(cfg, task_name, completed=True):
     cfg.logger.info('Task [%s] %s.' % (task_name, 'completed' if completed else 'started'))
 
 
@@ -123,12 +127,7 @@ from ruffus import *
 # Prepare FASTQ
 # 
 
-@active_if(cfg.run_folder != None)
-@follows(mkdir(cfg.runs_scratch_dir), mkdir(os.path.join(cfg.runs_scratch_dir,'fastqs')))
-@files(cfg.run_folder, os.path.join(cfg.runs_scratch_dir,'fastqs','completed'))
-@posttask(touch_file(os.path.join(cfg.runs_scratch_dir,'fastqs','completed')))
-@posttask(lambda: log_task_progress('bcl2fastq_conversion', completed=True))
-def bcl2fastq_conversion(run_directory, completed_flag):
+def bcl2fastq_conversion(run_directory, completed_flag, cfg):
     """ Run bcl2fastq conversion and create fastq files in the run directory"""
     out_dir = os.path.join(cfg.runs_scratch_dir,'fastqs')
     interop_dir = os.path.join(out_dir,'InterOp')
@@ -139,15 +138,10 @@ def bcl2fastq_conversion(run_directory, completed_flag):
     if cfg.run_on_bcl_tile != None:
         args += " --tiles %s" % cfg.run_on_bcl_tile
         
-    run_cmd(cfg.bcl2fastq, args, dockerize=cfg.dockerize, cpus=8, mem_per_cpu=2048)
+    run_cmd(cfg, cfg.bcl2fastq, args, cpus=8, mem_per_cpu=2048)
     
 
 
-@active_if(cfg.run_folder != None and cfg.fastq_archive != None)
-@transform(bcl2fastq_conversion, 
-            formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), 
-            str(cfg.fastq_archive)+"/{RUN_ID[0]}")
-@posttask(lambda: log_task_progress('archive_fastqs', completed=True))
 def archive_fastqs(completed_flag, archive_dir):
     """ Archive fastqs """    
     fq_dir = os.path.dirname(completed_flag)
@@ -164,19 +158,13 @@ def archive_fastqs(completed_flag, archive_dir):
         os.symlink(f, os.path.join(fq_dir,os.path.basename(f)))
 
 
+
 #
 # Prepare directory for every sample and link the input fastq files
 # Expected format:
 #    /path/to/file/[SAMPLE_ID]_S[1-9]\d?_L\d\d\d_R[12]_001.fastq.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
-@active_if(cfg.run_folder != None or cfg.input_fastqs != None)
-@jobs_limit(1)    # to avoid problems with simultanous creation of the same sample dir
-@follows(archive_fastqs)
-@transform(os.path.join(cfg.runs_scratch_dir,'fastqs','*.fastq.gz') if cfg.run_folder != None else cfg.input_fastqs,
-           formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'), 
-           cfg.runs_scratch_dir+'/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
-@posttask(lambda: log_task_progress('link_fastqs', completed=True))
 def link_fastqs(fastq_in, fastq_out):
     """Make working directory for every sample and link fastq files in"""
     if not os.path.exists(os.path.dirname(fastq_out)):
@@ -197,12 +185,7 @@ def link_fastqs(fastq_in, fastq_out):
 #    [SAMPLE_ID]_[LANE_ID].fq2.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
-@active_if(cfg.run_folder != None or cfg.input_fastqs != None)
-@collate(link_fastqs, regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), 
-                      [r'\1/\2_\3_R1.fq.gz', r'\1/\2_\3_R2.fq.gz', 
-                       r'\1/\2_\3_R1_unpaired.fq.gz', r'\1/\2_\3_R2_unpaired.fq.gz'])
-@posttask(lambda: log_task_progress('trim_reads', completed=True))
-def trim_reads(inputs, outfqs):
+def trim_reads(inputs, outfqs, cfg):
     """ Trim reads """
     args = "PE -phred33 -threads 1 \
             {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
@@ -216,8 +199,7 @@ def trim_reads(inputs, outfqs):
                               adapter=adapters)
 
 #    max_mem = 2048
-    run_cmd(cfg.trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
-            dockerize=cfg.dockerize)#, cpus=1, mem_per_cpu=max_mem)
+    run_cmd(cfg, cfg.trimmomatic, args) #interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
 #
@@ -235,12 +217,7 @@ def trim_reads(inputs, outfqs):
 #    [SAMPLE_ID]_R2.fq.gz     - with notmerged R2 
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 # 
-@active_if(cfg.run_folder != None or cfg.input_fastqs != None)
-@collate(link_fastqs, 
-        regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'), 
-        [r'\1/\2_merged.fq.gz', r'\1/\2_notmerged_R1.fq.gz', r'\1/\2_notmerged_R2.fq.gz'])
-@posttask(lambda: log_task_progress('merge_reads', completed=True))
-def merge_reads(inputs, outputs):
+def merge_reads(inputs, outputs, cfg):
 	""" Merge overlapping reads """
 	
 	hist=outputs[0].replace('_merged.fq.gz','.hist')
@@ -251,7 +228,7 @@ def merge_reads(inputs, outputs):
 					fqm=outputs[0], u1=outputs[1], u2=outputs[2],
 					hist=hist, adapters=cfg.adapters)
 		  
-	run_cmd(cfg.bbmerge, args, dockerize=cfg.dockerize)
+	run_cmd(cfg, cfg.bbmerge, args)
     
     
     
@@ -264,13 +241,7 @@ def merge_reads(inputs, outputs):
 #    [SAMPLE_ID]_R2.trimmed.fq.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
-@active_if(cfg.run_folder != None or cfg.input_fastqs != None)
-@transform(merge_reads, 
-           formatter(None, '.+/(?P<PREFIX>[^/]+)\.fq\.gz$', '.+/(?P<PREFIX>[^/]+)\.fq\.gz$'), 
-           ['{path[1]}/{PREFIX[1]}.trimmed.fq.gz', '{path[2]}/{PREFIX[2]}.trimmed.fq.gz',
-            '{path[1]}/{PREFIX[1]}.unpaired.fq.gz', '{path[2]}/{PREFIX[2]}.unpaired.fq.gz'])
-@posttask(lambda: log_task_progress('trim_notmerged_pairs', completed=True))
-def trim_notmerged_pairs(inputs, outfqs):
+def trim_notmerged_pairs(inputs, outfqs, cfg):
     """ Trim nonoverlapping reads """
     args = "PE -phred33 -threads 1 \
             {in1} {in2} {out1} {unpaired1} {out2} {unpaired2} \
@@ -281,8 +252,7 @@ def trim_notmerged_pairs(inputs, outfqs):
                                        unpaired1=outfqs[2], unpaired2=outfqs[3],
                                        adapter=cfg.adapters)
 #    max_mem = 2048
-    run_cmd(cfg.trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
-            dockerize=cfg.dockerize)#, cpus=1, mem_per_cpu=max_mem)
+    run_cmd(cfg.trimmomatic, args) #interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
 #
@@ -293,10 +263,7 @@ def trim_notmerged_pairs(inputs, outfqs):
 #    [SAMPLE_ID]_merged.trimmed.fq.gz
 # SAMPLE_ID can contain all signs except path delimiter, i.e. "\"
 #
-@active_if(cfg.run_folder != None or cfg.input_fastqs != None)
-@transform(merge_reads, suffix('_merged.fq.gz'), '_merged.trimmed.fq.gz')
-@posttask(lambda: log_task_progress('trim_merged_reads', completed=True))
-def trim_merged_reads(input_fqs, trimmed_fq):
+def trim_merged_reads(input_fqs, trimmed_fq, cfg):
     """ Trim merged overlapping reads """
 
     merged_fq=input_fqs[0]
@@ -305,8 +272,7 @@ def trim_merged_reads(input_fqs, trimmed_fq):
             SLIDINGWINDOW:4:15 MINLEN:36 \
             ".format(fq_in=merged_fq, fq_out=trimmed_fq, adapter=cfg.adapters)
 #    max_mem = 2048
-    run_cmd(cfg.trimmomatic, args, #interpreter_args="-Xmx"+str(max_mem)+"m", 
-            dockerize=cfg.dockerize)#, cpus=1, mem_per_cpu=max_mem)
+    run_cmd(cfg, cfg.trimmomatic, args) #interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
 
@@ -338,8 +304,8 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 
 	samtools_args = "sort -o {out}".format(out=output_bam)
 
-	run_piped_command(cfg.bwa, bwa_args, None,
-	                  cfg.samtools, samtools_args, None)
+	run_piped_command(global_vars.cfg.bwa, bwa_args, None,
+	                  global_vars.cfg.samtools, samtools_args, None)
 
 def merge_bams(out_bam, *in_bams):
 	threads = 1
@@ -349,7 +315,7 @@ def merge_bams(out_bam, *in_bams):
 	for bam in in_bams:
 		args += (" "+bam)
 		
-	run_cmd(cfg.samtools, args, dockerize=cfg.dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+	run_cmd(global_vars.cfg.samtools, args, dockerize=global_vars.cfg.dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
 	
 	
 def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
@@ -389,7 +355,7 @@ def map_trimmed_reads(fastqs, bam_file, sample_id):
         '@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U1"),
         '@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U2"),]
 
-    map_reads([(fq1,fq2),fq1u, fq2u], cfg.reference, bam_file, read_groups)
+    map_reads([(fq1,fq2),fq1u, fq2u], global_vars.cfg.reference, bam_file, read_groups)
 
 
 
@@ -415,7 +381,7 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, bam_list_filename='/tmp/
     args = args = " -f {ref} -v {vcf} -L {bam_list} \
         ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename)
             
-    run_cmd(cfg.freebayes, args, dockerize=cfg.dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+    run_cmd(global_vars.cfg.freebayes, args, dockerize=global_vars.cfg.dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_filename)
 
@@ -423,13 +389,13 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, bam_list_filename='/tmp/
 @transform(map_trimmed_reads, suffix(".bam"), ".fb.vcf")
 def call_variants_on_trimmed(bam, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
-    call_variants_freebayes([bam], vcf, cfg.reference, bam+'.lst')
+    call_variants_freebayes([bam], vcf, global_vars.cfg.reference, bam+'.lst')
 
 
-@merge(map_trimmed_reads, os.path.join(cfg.runs_scratch_dir, "multisample.fb.vcf"))
+@merge(map_trimmed_reads, os.path.join(global_vars.cfg.runs_scratch_dir, "multisample.fb.vcf"))
 def jointcall_variants_on_trimmed(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
-    call_variants_freebayes(bams, vcf, cfg.reference)
+    call_variants_freebayes(bams, vcf, global_vars.cfg.reference)
 
 
     #8888888888888888888888888888888888888888888888888888
@@ -441,13 +407,13 @@ def jointcall_variants_on_trimmed(bams, vcf):
 
 def clean_trimmed_fastqs():
     """ Remove the trimmed fastq files. Links to original fastqs are kept """
-    for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*.fq.gz')):
+    for f in glob.glob(os.path.join(global_vars.cfg.runs_scratch_dir,'*','*.fq.gz')):
         os.remove(f)
 
 def clean_assembly_dir(assembly_name):
     """ Remove the temporary assembly files """
     import shutil
-    for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*',assembly_name+'_assembly')):
+    for f in glob.glob(os.path.join(global_vars.cfg.runs_scratch_dir,'*',assembly_name+'_assembly')):
             print 'rm -r '+f
             #shutil.rmtree(f)
 
@@ -470,7 +436,7 @@ def run_spades(out_dir, fq=None, fq1=None, fq2=None,
             i = i + 1
 	
     #print args
-    run_cmd(cfg.spades, args, dockerize=cfg.dockerize, cpus=threads, mem_per_cpu=int(mem_gb*1024/threads))
+    run_cmd(global_vars.cfg.spades, args, dockerize=global_vars.cfg.dockerize, cpus=threads, mem_per_cpu=int(mem_gb*1024/threads))
 
 
 def spades_assembly(scaffolds_file, assembly_name, **args):
@@ -539,37 +505,37 @@ def assemble_merged(fastqs, scaffolds):
 # QC the FASTQ files
 #
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
 @transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
-           os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
+           os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
 def qc_raw_reads(input_fastq, report):
     """ Generate FastQC report for raw FASTQs """
     produce_fastqc_report(input_fastq, os.path.dirname(report))
 
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
 @transform(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None), 
-	  [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
-           os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
+	  [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
+           os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
 def qc_trimmed_reads(input_fastqs, reports):
     """ Generate FastQC report for trimmed FASTQs """
     produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
     produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
 
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
 @transform(trim_merged_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$'), 
-         os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')
+         os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')
 def qc_merged_reads(input_fastq, report):
     """ Generate FastQC report for trimmed FASTQs """
     produce_fastqc_report(input_fastq, os.path.dirname(report))
 
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
 @transform(trim_notmerged_pairs, 
          formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None),       
-         [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
-          os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
+         [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
+          os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
 def qc_notmerged_pairs(input_fastqs, reports):
     """ Generate FastQC report for trimmed FASTQs """
     produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
@@ -590,19 +556,19 @@ def qc_reads():
 # QC the assemblies
 #
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','assembly_qc')))
-@merge(assemble_trimmed, os.path.join(cfg.runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
+@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','assembly_qc')))
+@merge(assemble_trimmed, os.path.join(global_vars.cfg.runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
 @posttask(lambda: log_task_progress('qc_tr_assemblies', completed=True))
 def qc_tr_assemblies(scaffolds, report_dir):
     args = ("-o %s " % report_dir) + " ".join(scaffolds)
-    run_cmd(cfg.quast, args, dockerize=cfg.dockerize)
+    run_cmd(global_vars.cfg.quast, args, dockerize=global_vars.cfg.dockerize)
 
-@follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(cfg.runs_scratch_dir,'qc','assembly_qc')))
-@merge(assemble_merged, os.path.join(cfg.runs_scratch_dir, 'qc', 'assembly_qc','mr_report'))
+@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','assembly_qc')))
+@merge(assemble_merged, os.path.join(global_vars.cfg.runs_scratch_dir, 'qc', 'assembly_qc','mr_report'))
 @posttask(lambda: log_task_progress('qc_mr_assemblies', completed=True))
 def qc_mr_assemblies(scaffolds, report_dir):
     args = ("-o %s " % report_dir) + " ".join(scaffolds)
-    run_cmd(cfg.quast, args, dockerize=cfg.dockerize)
+    run_cmd(global_vars.cfg.quast, args, dockerize=global_vars.cfg.dockerize)
 
 
 
@@ -616,33 +582,33 @@ def qc_mr_assemblies(scaffolds, report_dir):
 
 import shutil
 
-@active_if(cfg.results_archive != None)
-@follows(mkdir(os.path.join(cfg.results_archive, cfg.run_id)))
-@transform(assemble_merged, formatter(), os.path.join(cfg.results_archive, cfg.run_id, '{basename[0]}{ext[0]}'))
+@active_if(global_vars.cfg.results_archive != None)
+@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id)))
+@transform(assemble_merged, formatter(), os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, '{basename[0]}{ext[0]}'))
 def archive_fasta(fasta, archived_fasta):      
     shutil.copyfile(fasta, archived_fasta)
     shutil.copyfile(fasta+'.contigs.fasta', archived_fasta+'.contigs.fasta')
     
     
-@active_if(cfg.results_archive != None)
-@follows(mkdir(os.path.join(cfg.results_archive, cfg.run_id)))
-@transform(qc_mr_assemblies, formatter(), os.path.join(cfg.results_archive, cfg.run_id, 'qc'))
+@active_if(global_vars.cfg.results_archive != None)
+@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id)))
+@transform(qc_mr_assemblies, formatter(), os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'qc'))
 def archive_qc(quast_report_dir, archived_qc_dir):
     qc_dir = os.path.dirname(os.path.dirname(quast_report_dir))
     run_cmd("cp -r %s %s" % (qc_dir, archived_qc_dir), "", dockerize=False, run_locally=True)
 
-@active_if(cfg.results_archive != None)
-@follows(mkdir(os.path.join(cfg.results_archive, cfg.run_id)))
-@transform([os.path.join(cfg.runs_scratch_dir, 'pipeline')], 
+@active_if(global_vars.cfg.results_archive != None)
+@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id)))
+@transform([os.path.join(global_vars.cfg.runs_scratch_dir, 'pipeline')], 
            formatter(), 
-           [os.path.join(cfg.results_archive, cfg.run_id, 'pipeline'), 
-            os.path.join(cfg.results_archive, cfg.run_id, 'pipeline', 'pipeline.config')])
+           [os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'pipeline'), 
+            os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'pipeline', 'pipeline.config')])
 def archive_pipeline(pipeline_dir, archived_paths):
     run_cmd("cp -r %s %s" % (pipeline_dir, archived_paths[0]), "", dockerize=False, run_locally=True)
     shutil.copyfile(pipeline_dir+'.config', archived_paths[1])
 
 
-@active_if(cfg.results_archive != None)
+@active_if(global_vars.cfg.results_archive != None)
 @follows(archive_fasta, archive_qc, archive_pipeline)
 @posttask(lambda: log_task_progress('archive_results', completed=True))
 def archive_results():
@@ -656,7 +622,7 @@ def cleanup_files():
     pass
 #    run_cmd("rm -rf {dir}/*/mra_assembly \
 #            {dir}/*/*merged*.fq.gz \
-#            ".format(dir=cfg.runs_scratch_dir), "", run_locally=True)
+#            ".format(dir=global_vars.cfg.runs_scratch_dir), "", run_locally=True)
 
 
 @follows(qc_reads, qc_mr_assemblies, archive_results)
