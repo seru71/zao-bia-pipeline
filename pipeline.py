@@ -411,6 +411,53 @@ def assemble_pipeline(name, cfg):
              .jobs_limit(4)
              #.posttask(lambda: clean_assembly_dir('mra_assembly'))
                     
+       
+       
+            
+        # #################################
+        #
+        #   Q u a l i t y   c o n t r o l
+        #
+        # #############################
+
+
+        qc_raw_reads_task = \
+            p.transform(qc_fastqs,
+                        link_fastqs_task,
+                        formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
+                        os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')\
+             .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+
+
+        qc_raw_trimmed_reads_task = \
+            p.transform(qc_fastqs,
+                        trim_reads_task,
+                        formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None), 
+                        [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
+                         os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])\
+             .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+
+
+        qc_merged_reads_task = \
+            p.transform(qc_fastqs,
+                        trim_merged_reads_task,
+                        formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$'), 
+                        os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')\
+             .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+                
+
+        qc_notmerged_pairs_task = \
+            p.transform(qc_fastqs,
+                        trim_notmerged_pairs,
+                        formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None), 
+                        [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
+                         os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])\
+             .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
+
+
+        qc_reads_task = p.follows(do_nothing)\
+                         .follows(qc_raw_reads, qc_merged_reads, qc_notmerged_pairs)\
+                         .posttask(lambda: log_task_progress(cfg, 'qc_reads', completed=True))
 
         return p
    

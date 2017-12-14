@@ -488,50 +488,41 @@ def assemble_merged(fastqs, scaffolds, cfg):
 # QC the FASTQ files
 #
 
-@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
-@transform(link_fastqs, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
-           os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')
+def qc_fastqs(input_fastqs, reports):
+    if not isinstance(input_fastqs, list):
+        input_fastqs = [input_fastqs]
+    if not isinstance(reports, list):
+        reports = [reports]
+    if len(input_fastqs) != len(reports):
+        raise Exception("Lengths of inputs FASTQs and output reports do not match")
+        
+    for i in range(0, len(input_fastqs)):
+        produce_fastqc_report(input_fastqs[i], os.path.dirname(reports[i]))
+"""
 def qc_raw_reads(input_fastq, report):
-    """ Generate FastQC report for raw FASTQs """
+    "" Generate FastQC report for raw FASTQs ""
     produce_fastqc_report(input_fastq, os.path.dirname(report))
 
 
-@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
-@transform(trim_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None), 
-	  [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
-           os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
 def qc_trimmed_reads(input_fastqs, reports):
-    """ Generate FastQC report for trimmed FASTQs """
+    "" Generate FastQC report for trimmed FASTQs ""
     produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
     produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
 
 
-@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
-@transform(trim_merged_reads, formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$'), 
-         os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')
 def qc_merged_reads(input_fastq, report):
-    """ Generate FastQC report for trimmed FASTQs """
+    "" Generate FastQC report for trimmed FASTQs ""
     produce_fastqc_report(input_fastq, os.path.dirname(report))
 
 
-@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')))
-@transform(trim_notmerged_pairs, 
-         formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None),       
-         [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
-          os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
 def qc_notmerged_pairs(input_fastqs, reports):
-    """ Generate FastQC report for trimmed FASTQs """"
+    "" Generate FastQC report for trimmed FASTQs ""
     produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
     produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
+"""
 
 
-
-
-
-#@follows(qc_raw_reads, qc_trimmed_reads)
-@follows(qc_raw_reads, qc_merged_reads, qc_notmerged_pairs)
-@posttask(lambda: log_task_progress('qc_reads', completed=True))
-def qc_reads():
+def do_nothing():
     pass
 
 #
