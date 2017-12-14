@@ -223,7 +223,7 @@ class SampleTable:
         
         d = {s:'{"target_tasks":["bcl2fastq_conversion"]}' for s in sample_ids}
         
-        d[sample_ids[0]] = '{"target_tasks":["assemble_merged"]}'
+        d[sample_ids[0]] = '{"target_tasks":["qc_reads"]}'
         d[sample_ids[1]] = '{"target_tasks":["assemble_merged"]}'
         
         return d
@@ -323,23 +323,23 @@ def assemble_pipeline(name, cfg):
 
 
         trim_notmerged_pairs_task = \
-	    p.transform(trim_notmerged_pairs, 
+            p.transform(trim_notmerged_pairs, 
                         merge_reads_task,
                         formatter(None, '.+/(?P<PREFIX>[^/]+)\.fq\.gz$', '.+/(?P<PREFIX>[^/]+)\.fq\.gz$'), 
                         ['{path[1]}/{PREFIX[1]}.trimmed.fq.gz', '{path[2]}/{PREFIX[2]}.trimmed.fq.gz',
                         '{path[1]}/{PREFIX[1]}.unpaired.fq.gz', '{path[2]}/{PREFIX[2]}.unpaired.fq.gz'],
                         cfg)\
-            .posttask(lambda: log_task_progress(cfg, 'trim_notmerged_pairs', completed=True))
+             .posttask(lambda: log_task_progress(cfg, 'trim_notmerged_pairs', completed=True))
                                                 
         
         
         trim_merged_reads_task = \
- 	    p.transform(trim_merged_reads, 
+            p.transform(trim_merged_reads, 
                         merge_reads_task,
                         suffix('_merged.fq.gz'), 
                         '_merged.trimmed.fq.gz',
                         cfg)\
-                .posttask(lambda: log_task_progress(cfg, 'trim_merged_reads', completed=True))
+            .posttask(lambda: log_task_progress(cfg, 'trim_merged_reads', completed=True))
    
    
         # #################
@@ -425,16 +425,20 @@ def assemble_pipeline(name, cfg):
             p.transform(qc_fastqs,
                         link_fastqs_task,
                         formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fastq\.gz$'), 
-                        os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html')\
+                        os.path.join(cfg.runs_scratch_dir,'qc','read_qc/')+'{SAMPLE_ID[0]}_fastqc.html',
+                        cfg,
+                        name='qc_raw_reads')\
              .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
 
 
         qc_raw_trimmed_reads_task = \
-            p.transform(qc_fastqs,
+            p.transform(qc_fastqs, 
                         trim_reads_task,
                         formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None), 
                         [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
-                         os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])\
+                         os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'],
+                        cfg,
+                        name='qc_raw_trimmed_reads_task')\
              .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
 
 
@@ -442,7 +446,9 @@ def assemble_pipeline(name, cfg):
             p.transform(qc_fastqs,
                         trim_merged_reads_task,
                         formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$'), 
-                        os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html')\
+                        os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
+                        cfg,
+                        name='qc_merged_reads')\
              .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
                 
 
@@ -450,14 +456,23 @@ def assemble_pipeline(name, cfg):
             p.transform(qc_fastqs,
                         trim_notmerged_pairs,
                         formatter('.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', '.+/(?P<SAMPLE_ID>[^/]+)\.fq\.gz$', None, None), 
-                        [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
-                         os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])\
+                        [os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
+                         os.path.join(cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'],
+                        cfg,
+                        name = 'qc_notmerged_pairs')\
              .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
 
 
-        qc_reads_task = p.follows(do_nothing)\
-                         .follows(qc_raw_reads, qc_merged_reads, qc_notmerged_pairs)\
+        qc_reads_task = p.follows(name='qc_reads', task_func=do_nothing)\
+                         .follows(qc_raw_reads_task, qc_merged_reads_task, qc_notmerged_pairs_task)\
                          .posttask(lambda: log_task_progress(cfg, 'qc_reads', completed=True))
+
+
+
+
+
+
+
 
         return p
    

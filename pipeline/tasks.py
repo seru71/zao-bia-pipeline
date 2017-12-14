@@ -102,12 +102,14 @@ def log_task_progress(cfg, task_name, completed=True):
     cfg.logger.info('Task [%s] %s.' % (task_name, 'completed' if completed else 'started'))
 
 
-def produce_fastqc_report(fastq_file, output_dir=None):
+def produce_fastqc_report(cfg, fastq_file, output_dir=None):
     args = fastq_file
     args += (' -o '+output_dir) if output_dir != None else ''
-    run_cmd(fastqc, args, dockerize=dockerize)
+    run_cmd(cfg, cfg.fastqc, args)
 
 
+def do_nothing():
+    pass
 
     
 
@@ -488,48 +490,24 @@ def assemble_merged(fastqs, scaffolds, cfg):
 # QC the FASTQ files
 #
 
-def qc_fastqs(input_fastqs, reports):
+def qc_fastqs(input_fastqs, reports, cfg):
+    """ Produces len(reports) reports for    """
     if not isinstance(input_fastqs, list):
         input_fastqs = [input_fastqs]
     if not isinstance(reports, list):
         reports = [reports]
-    if len(input_fastqs) != len(reports):
-        raise Exception("Lengths of inputs FASTQs and output reports do not match")
-        
-    for i in range(0, len(input_fastqs)):
-        produce_fastqc_report(input_fastqs[i], os.path.dirname(reports[i]))
-"""
-def qc_raw_reads(input_fastq, report):
-    "" Generate FastQC report for raw FASTQs ""
-    produce_fastqc_report(input_fastq, os.path.dirname(report))
+    if len(input_fastqs)<len(reports):
+        raise Exception('Lengths of input FASTQs and report files do not match:\n%s\n%s' % (input_fastqs, reports))
+    
+    for i in range(0, len(reports)):
+        produce_fastqc_report(cfg, input_fastqs[i], os.path.dirname(reports[i]))
 
-
-def qc_trimmed_reads(input_fastqs, reports):
-    "" Generate FastQC report for trimmed FASTQs ""
-    produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
-    produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
-
-
-def qc_merged_reads(input_fastq, report):
-    "" Generate FastQC report for trimmed FASTQs ""
-    produce_fastqc_report(input_fastq, os.path.dirname(report))
-
-
-def qc_notmerged_pairs(input_fastqs, reports):
-    "" Generate FastQC report for trimmed FASTQs ""
-    produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
-    produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
-"""
-
-
-def do_nothing():
-    pass
 
 #
 #
 # QC the assemblies
 #
-
+"""
 @follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','assembly_qc')))
 @merge(assemble_trimmed, os.path.join(global_vars.cfg.runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
 @posttask(lambda: log_task_progress('qc_tr_assemblies', completed=True))
