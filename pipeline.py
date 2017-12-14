@@ -223,8 +223,8 @@ class SampleTable:
         
         d = {s:'{"target_tasks":["bcl2fastq_conversion"]}' for s in sample_ids}
         
-        d[sample_ids[0]] = '{"target_tasks":["link_fastqs"]}'
-        d[sample_ids[1]] = '{"target_tasks":["link_fastqs"]}'
+        d[sample_ids[0]] = '{"target_tasks":["assemble_merged"]}'
+        d[sample_ids[1]] = '{"target_tasks":["assemble_merged"]}'
         
         return d
 
@@ -258,6 +258,7 @@ def make_fastq_globs_from_sample_ids(sample_ids, fastq_dir):
         
         
 from ruffus import *
+from pipeline.tasks import *
         
 def assemble_pipeline(name, cfg):
     
@@ -271,15 +272,15 @@ def assemble_pipeline(name, cfg):
                 .follows(mkdir(cfg.runs_scratch_dir))\
                 .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'fastqs')))\
                 .posttask(touch_file(os.path.join(cfg.runs_scratch_dir,'fastqs','completed')))\
-                -posttask(lambda: log_task_progress(cfg, 'bcl2fastq_conversion', completed=True))
+                .posttask(lambda: log_task_progress(cfg, 'bcl2fastq_conversion', completed=True))
 
 
-        archive_fastq_task = p.transform(archive_fastqs, 
+        archive_fastqs_task = p.transform(archive_fastqs, 
                                     bcl2fastq_conversion_task,
                                     formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), 
-                                    str(cfg.fastq_archive)+"/{RUN_ID[0]}")\
-                            .active_if(cfg.fastq_archive != None)\
-                            .posttask(lambda: log_task_progress(cfg, 'archive_fastqs', completed=True))
+                                    str(cfg.fastq_archive)+"/{RUN_ID[0]}/fastq")\
+                               .active_if(cfg.fastq_archive != None)\
+                               .posttask(lambda: log_task_progress(cfg, 'archive_fastqs', completed=True))
     
         
         link_fastqs_task = p.transform(link_fastqs,
@@ -288,7 +289,7 @@ def assemble_pipeline(name, cfg):
                                     cfg.runs_scratch_dir+'/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')\
                             .follows(archive_fastqs_task)\
                             .jobs_limit(1)\
-                            .posttask(lambda: log_task_progress(cfg, 'link_fastqs', completed=True)
+                            .posttask(lambda: log_task_progress(cfg, 'link_fastqs', completed=True))
                      
         
         
@@ -301,7 +302,7 @@ def assemble_pipeline(name, cfg):
                                     
         #
         # just trim ...
-        trim_fastqs_task = p.collate(trim_fastqs, 
+        trim_reads_task = p.collate(trim_reads, 
                                     link_fastqs_task,
                                     regex(r'(.+)/([^/]+)_S[1-9]\d?_(L\d\d\d)_R[12]_001\.fastq\.gz$'),
                                     [r'\1/\2_\3_R1.fq.gz', r'\1/\2_\3_R2.fq.gz', 
@@ -321,8 +322,8 @@ def assemble_pipeline(name, cfg):
                             .posttask(lambda: log_task_progress(cfg, 'merge_reads', completed=True))
 
 
-        trim_notmerged_pairs_task = 
-            p.transform(trim_notmerged_pairs, 
+        trim_notmerged_pairs_task = \
+	    p.transform(trim_notmerged_pairs, 
                         merge_reads_task,
                         formatter(None, '.+/(?P<PREFIX>[^/]+)\.fq\.gz$', '.+/(?P<PREFIX>[^/]+)\.fq\.gz$'), 
                         ['{path[1]}/{PREFIX[1]}.trimmed.fq.gz', '{path[2]}/{PREFIX[2]}.trimmed.fq.gz',
@@ -332,12 +333,12 @@ def assemble_pipeline(name, cfg):
                                                 
         
         
-        trim_merged_reads_task = 
-            p.transform(trim_merged_reads, 
+        trim_merged_reads_task = \
+ 	    p.transform(trim_merged_reads, 
                         merge_reads_task,
                         suffix('_merged.fq.gz'), 
                         '_merged.trimmed.fq.gz',
-                        cfg)
+                        cfg)\
                 .posttask(lambda: log_task_progress(cfg, 'trim_merged_reads', completed=True))
    
    
@@ -348,11 +349,13 @@ def assemble_pipeline(name, cfg):
         ###############
    
    
-        map_trimmed_reads_task = 
+        map_trimmed_reads_task = \
             p.transform(map_trimmed_reads,
                         trim_reads_task,
                         formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_L\d\d\d_R[12](_unpaired)?\.fq\.gz$"),
-                        "{subpath[0][0]}/{subdir[0][0]}.bam", "{SAMPLE_ID[0]}")
+                        "{subpath[0][0]}/{subdir[0][0]}.bam", "{SAMPLE_ID[0]}",
+			cfg)\
+	     .posttask(lambda: log_task_progress(cfg, 'map_trimmed_reads', completed=True))
    
    
         # #################################
@@ -362,18 +365,21 @@ def assemble_pipeline(name, cfg):
         # #############################
         
       
-        call_variants_on_trimmed_task = 
+        call_variants_on_trimmed_task = \
             p.transform(call_variants_on_trimmed,
                         map_trimmed_reads_task,
                         suffix(".bam"), 
-                        ".fb.vcf")
+                        ".fb.vcf",
+			cfg)\
+             .posttask(lambda: log_task_progress(cfg, 'call_variants_on_trimmed', completed=True))
 
    
-        joincall_variants_on_triummed_task = 
+        joincall_variants_on_triummed_task = \
             p.merge(jointcall_variants_on_trimmed,
                     map_trimmed_reads_task, 
-                    os.path.join(global_vars.cfg.runs_scratch_dir, "multisample.fb.vcf")
-                    )
+                    os.path.join(cfg.runs_scratch_dir, "multisample.fb.vcf"),
+                    cfg)\
+             .posttask(lambda: log_task_progress(cfg, 'jointcall_variants_on_trimmed', completed=True))
    
    
         # ###################
@@ -381,36 +387,32 @@ def assemble_pipeline(name, cfg):
         #   A s s e m b l y
         #
         # ###############
-        
-        
-        assemble_trimmed_task = 
-            p.collate(assemble_trimmed,
-                      trim_reads_task,
-                      formatter(),
-                      '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
-             .posttask(lambda: clean_assembly_dir('tra_assembly'))
-             .posttask(lambda: log_task_progress('assemble_trimmed', start=False))
-             .jobs_limit(4)
-            
-            
-            
-#            @jobs_limit(4)
-#            @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
-#            @posttask(lambda: log_task_progress('assemble_merged', completed=True))
-##@posttask(lambda: clean_assembly_dir('mra_assembly'))
 
-        assemble_merged_task = 
+        
+        
+#        assemble_trimmed_task = \
+#            p.collate(assemble_trimmed,
+#                      trim_reads_task,
+#                      formatter(),
+#                      '{subpath[0][0]}/{subdir[0][0]}_tra.fasta',
+#		      cfg)\
+#             .posttask(lambda: clean_assembly_dir('tra_assembly', cfg))\
+#             .posttask(lambda: log_task_progress(cfg, 'assemble_trimmed', start=False))\
+#             .jobs_limit(4)
+                     
+            
+        assemble_merged_task = \
             p.collate(assemble_merged,
-                      trim_merged_reads, trim_notmerged_pairs], 
+                      [trim_merged_reads, trim_notmerged_pairs], 
                       formatter(), 
-                      '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
-             .posttask(lambda: log_task_progress('assemble_merged', completed=True))
+                      '{subpath[0][0]}/{subdir[0][0]}_mra.fasta', 
+		      cfg)\
+             .posttask(lambda: log_task_progress(cfg, 'assemble_merged', completed=True))\
              .jobs_limit(4)
              #.posttask(lambda: clean_assembly_dir('mra_assembly'))
-                      [
-                      
-            
-        
+                    
+
+        return p
    
    
    
@@ -481,6 +483,7 @@ if __name__ == '__main__':
                     os.path.join(cfg.runs_scratch_dir, "fastqs")
                  )
         cfg.set_input_fastqs(fastqs)
+	cfg.num_jobs=2
     
         
         p = assemble_pipeline("SAMPLE_GROUP_" + str(cfg_group_idx), cfg)                         
@@ -491,7 +494,7 @@ if __name__ == '__main__':
             print "\n\n\nSAMPLE_GROUP_" + str(cfg_group_idx) + \
                 "[" + cfg_group + "] :"
                             
-            p.printout(sys.stdout, pipeline.global_vars.cfg.target_tasks, options.forced_tasks,
+            p.printout(sys.stdout, cfg.target_tasks, options.forced_tasks,
                             gnu_make_maximal_rebuild_mode = options.rebuild_mode,
                             verbose=options.verbose, verbose_abbreviated_path=0,
                             checksum_level = 0)
@@ -510,7 +513,7 @@ if __name__ == '__main__':
         else:        
             p.run(cfg.target_tasks, 
                   options.forced_tasks,
-                  multithread     = pipeline.global_vars.cfg.num_jobs,
+                  multithread     = cfg.num_jobs,
                   logger          = logger,
                   verbose         = options.verbose,
                   gnu_make_maximal_rebuild_mode = options.rebuild_mode,

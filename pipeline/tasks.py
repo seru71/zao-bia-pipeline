@@ -252,7 +252,7 @@ def trim_notmerged_pairs(inputs, outfqs, cfg):
                                        unpaired1=outfqs[2], unpaired2=outfqs[3],
                                        adapter=cfg.adapters)
 #    max_mem = 2048
-    run_cmd(cfg.trimmomatic, args) #interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
+    run_cmd(cfg, cfg.trimmomatic, args) #interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
 
 #
@@ -304,8 +304,8 @@ def bwa_map_and_sort(output_bam, ref_genome, fq1, fq2=None, read_group=None, thr
 
 	samtools_args = "sort -o {out}".format(out=output_bam)
 
-	run_piped_command(global_vars.cfg.bwa, bwa_args, None,
-	                  global_vars.cfg.samtools, samtools_args, None)
+	run_piped_command(cfg, cfg.bwa, bwa_args, None,
+	                  cfg.samtools, samtools_args, None)
 
 def merge_bams(out_bam, *in_bams):
 	threads = 1
@@ -315,7 +315,7 @@ def merge_bams(out_bam, *in_bams):
 	for bam in in_bams:
 		args += (" "+bam)
 		
-	run_cmd(global_vars.cfg.samtools, args, dockerize=global_vars.cfg.dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+	run_cmd(cfg, cfg.samtools, args, cpus=threads, mem_per_cpu=int(mem/threads))
 	
 	
 def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
@@ -339,7 +339,7 @@ def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
 		  os.remove(f)
 
 
-def map_trimmed_reads(fastqs, bam_file, sample_id):
+def map_trimmed_reads(fastqs, bam_file, sample_id, cfg):
     """ Maps trimmed paired and unpaired reads. """
     fq1=fastqs[0]
     fq2=fastqs[1]
@@ -350,7 +350,7 @@ def map_trimmed_reads(fastqs, bam_file, sample_id):
         '@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U1"),
         '@RG\tID:{rgid}\tSM:{rgid}\tLB:{lb}'.format(rgid=sample_id, lb=sample_id+"_U2"),]
 
-    map_reads([(fq1,fq2),fq1u, fq2u], global_vars.cfg.reference, bam_file, read_groups)
+    map_reads([(fq1,fq2),fq1u, fq2u], cfg.reference, bam_file, read_groups)
 
 
 
@@ -364,7 +364,7 @@ def map_trimmed_reads(fastqs, bam_file, sample_id):
 
 
 
-def call_variants_freebayes(bams_list, vcf, ref_genome, bam_list_filename='/tmp/bam_list'):
+def call_variants_freebayes(bams_list, vcf, cfg, bam_list_filename='/tmp/bam_list'):
     
     threads = 1
     mem = 4096
@@ -374,21 +374,21 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, bam_list_filename='/tmp/
             f.write(bam + '\n')
     
     args = args = " -f {ref} -v {vcf} -L {bam_list} \
-        ".format(ref=ref_genome, vcf=vcf, bam_list=bam_list_filename)
+        ".format(ref=cfg.reference, vcf=vcf, bam_list=bam_list_filename)
             
-    run_cmd(global_vars.cfg.freebayes, args, dockerize=global_vars.cfg.dockerize, cpus=threads, mem_per_cpu=int(mem/threads))
+    run_cmd(cfg, cfg.freebayes, args, cpus=threads, mem_per_cpu=int(mem/threads))
     
     os.remove(bam_list_filename)
 
 
-def call_variants_on_trimmed(bam, vcf):
+def call_variants_on_trimmed(bam, vcf, cfg):
     """ Call variants using freebayes on trimmed (not merged) reads """
-    call_variants_freebayes([bam], vcf, global_vars.cfg.reference, bam+'.lst')
+    call_variants_freebayes([bam], vcf, cfg, bam+'.lst')
 
 
-def jointcall_variants_on_trimmed(bams, vcf):
+def jointcall_variants_on_trimmed(bams, vcf, cfg):
     """ Call variants using freebayes on trimmed (not merged) reads """
-    call_variants_freebayes(bams, vcf, global_vars.cfg.reference)
+    call_variants_freebayes(bams, vcf, cfg)
 
 
     #8888888888888888888888888888888888888888888888888888
@@ -398,20 +398,20 @@ def jointcall_variants_on_trimmed(bams, vcf):
     #8888888888888888888888888888888888888888888888888888
 
 
-def clean_trimmed_fastqs():
+def clean_trimmed_fastqs(cfg):
     """ Remove the trimmed fastq files. Links to original fastqs are kept """
-    for f in glob.glob(os.path.join(global_vars.cfg.runs_scratch_dir,'*','*.fq.gz')):
+    for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*','*.fq.gz')):
         os.remove(f)
 
-def clean_assembly_dir(assembly_name):
+def clean_assembly_dir(assembly_name, cfg):
     """ Remove the temporary assembly files """
     import shutil
-    for f in glob.glob(os.path.join(global_vars.cfg.runs_scratch_dir,'*',assembly_name+'_assembly')):
+    for f in glob.glob(os.path.join(cfg.runs_scratch_dir,'*',assembly_name+'_assembly')):
             print 'rm -r '+f
             #shutil.rmtree(f)
 
 
-def run_spades(out_dir, fq=None, fq1=None, fq2=None, 
+def run_spades(cfg, out_dir, fq=None, fq1=None, fq2=None, 
 					fq1_single=None, fq2_single=None, 
 					threads = 4, mem_gb=8):
 						
@@ -429,16 +429,16 @@ def run_spades(out_dir, fq=None, fq1=None, fq2=None,
             i = i + 1
 	
     #print args
-    run_cmd(global_vars.cfg.spades, args, dockerize=global_vars.cfg.dockerize, cpus=threads, mem_per_cpu=int(mem_gb*1024/threads))
+    run_cmd(cfg, cfg.spades, args, cpus=threads, mem_per_cpu=int(mem_gb*1024/threads))
 
 
-def spades_assembly(scaffolds_file, assembly_name, **args):
+def spades_assembly(cfg, scaffolds_file, assembly_name, **args):
     
     out_dir=os.path.join(os.path.dirname(scaffolds_file), assembly_name)
     if not os.path.isdir(out_dir):
 		os.mkdir(out_dir)
         
-    run_spades(out_dir, **args)
+    run_spades(cfg, out_dir, **args)
     
     import shutil
     shutil.copy(os.path.join(out_dir,'scaffolds.fasta'), scaffolds_file)
@@ -452,9 +452,9 @@ def spades_assembly(scaffolds_file, assembly_name, **args):
 #    [SAMPLE_ID]/tra_assembly
 #    [SAMPLE_ID]/[SAMPLE_ID]_tra.fasta
 #
-def assemble_trimmed(fastqs, scaffolds):
+def assemble_trimmed(fastqs, scaffolds, cfg):
     fastqs=fastqs[0]   
-    spades_assembly(scaffolds, 'tra_assembly', 
+    spades_assembly(cfg, scaffolds, 'tra_assembly', 
         fq1=fastqs[0], fq2=fastqs[1], 
         fq1_single=fastqs[2], fq2_single=fastqs[3], 
         threads = 4, mem_gb=8)
@@ -466,14 +466,14 @@ def assemble_trimmed(fastqs, scaffolds):
 #    [SAMPLE_ID]/mra_assembly
 #    [SAMPLE_ID]/[SAMPLE_ID]_mra.fasta
 #
-def assemble_merged(fastqs, scaffolds):
+def assemble_merged(fastqs, scaffolds, cfg):
     fqm=fastqs[0]
     fq1=fastqs[1][0]
     fq2=fastqs[1][1]
     fq1u=fastqs[1][2]
     # fq2u is typicaly low quality
 
-    spades_assembly(scaffolds, 'mra_assembly', 
+    spades_assembly(cfg, scaffolds, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
         threads = 4, mem_gb=8)
@@ -520,7 +520,7 @@ def qc_merged_reads(input_fastq, report):
          [os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[0]}_fastqc.html',
           os.path.join(global_vars.cfg.runs_scratch_dir,'qc','read_qc')+'/{SAMPLE_ID[1]}_fastqc.html'])
 def qc_notmerged_pairs(input_fastqs, reports):
-    """ Generate FastQC report for trimmed FASTQs """
+    """ Generate FastQC report for trimmed FASTQs """"
     produce_fastqc_report(input_fastqs[0], os.path.dirname(reports[0]))
     produce_fastqc_report(input_fastqs[1], os.path.dirname(reports[1]))
 
@@ -566,7 +566,7 @@ def qc_mr_assemblies(scaffolds, report_dir):
 import shutil
 
 @active_if(global_vars.cfg.results_archive != None)
-@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id)))
+@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'fasta')))
 @transform(assemble_merged, formatter(), os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, '{basename[0]}{ext[0]}'))
 def archive_fasta(fasta, archived_fasta):      
     shutil.copyfile(fasta, archived_fasta)
@@ -615,7 +615,7 @@ def complete_run():
     pass
 
 
-
+"""
 
 
 
