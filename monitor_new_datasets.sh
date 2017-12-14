@@ -66,7 +66,7 @@ run_as_ngs git clone ${REPO} ${WORK_DIR}/${RUN_ID}/pipeline
 run_as_ngs cp ${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.config.template ${WORK_DIR}/${RUN_ID}/pipeline.config
 	
 timestamp=`date -Iseconds`
-cmd="${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.py \
+cmd="nice ${WORK_DIR}/${RUN_ID}/pipeline/bia_pipeline.py \
 -s ${WORK_DIR}/${RUN_ID}/pipeline.config \
 --run_folder ${RUN_FOLDER} \
 -t complete_run \
