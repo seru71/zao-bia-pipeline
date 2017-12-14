@@ -339,11 +339,6 @@ def map_reads(fastq_list, ref_genome, output_bam, read_groups=None):
 		  os.remove(f)
 
 
-#@transform(trim_reads, formatter(), "{subpath[0][0]}/{subdir[0][0]}.bam")
-@transform(trim_reads, 
-            formatter("(.+)/(?P<SAMPLE_ID>[^/]+)_L\d\d\d_R[12](_unpaired)?\.fq\.gz$"), 
-            "{subpath[0][0]}/{subdir[0][0]}.bam",
-            "{SAMPLE_ID[0]}")
 def map_trimmed_reads(fastqs, bam_file, sample_id):
     """ Maps trimmed paired and unpaired reads. """
     fq1=fastqs[0]
@@ -386,13 +381,11 @@ def call_variants_freebayes(bams_list, vcf, ref_genome, bam_list_filename='/tmp/
     os.remove(bam_list_filename)
 
 
-@transform(map_trimmed_reads, suffix(".bam"), ".fb.vcf")
 def call_variants_on_trimmed(bam, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes([bam], vcf, global_vars.cfg.reference, bam+'.lst')
 
 
-@merge(map_trimmed_reads, os.path.join(global_vars.cfg.runs_scratch_dir, "multisample.fb.vcf"))
 def jointcall_variants_on_trimmed(bams, vcf):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, global_vars.cfg.reference)
@@ -454,16 +447,11 @@ def spades_assembly(scaffolds_file, assembly_name, **args):
 
 
 #
-# FASTQ filenames are expected to have following format:
-#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
-# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
+# In this step, a pair of trimmed FASTQ files coming from trim_reads are used for assembly.
 # The output will be written to SAMPLE_ID directory:
-#    [SAMPLE_ID]/
+#    [SAMPLE_ID]/tra_assembly
+#    [SAMPLE_ID]/[SAMPLE_ID]_tra.fasta
 #
-@jobs_limit(4)
-@collate(trim_reads, formatter(), '{subpath[0][0]}/{subdir[0][0]}_tra.fasta')
-@posttask(lambda: clean_assembly_dir('tra_assembly'))
-@posttask(lambda: log_task_progress('assemble_trimmed', start=False))
 def assemble_trimmed(fastqs, scaffolds):
     fastqs=fastqs[0]   
     spades_assembly(scaffolds, 'tra_assembly', 
@@ -473,16 +461,11 @@ def assemble_trimmed(fastqs, scaffolds):
 
 
 #
-# FASTQ filenames are expected to have following format:
-#    [SAMPLE_ID]_[LANE_ID].fq[1|2].gz
-# In this step, the fq1 file coming from trim_reads is matched with the fq2 file and assembled together. 
+# In this step, the 5 FASTQ files coming from trim_merged_reads and trim_notmerged_pairs are used for assembly.
 # The output will be written to SAMPLE_ID directory:
-#    [SAMPLE_ID]/
+#    [SAMPLE_ID]/mra_assembly
+#    [SAMPLE_ID]/[SAMPLE_ID]_mra.fasta
 #
-@jobs_limit(4)
-@collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
-@posttask(lambda: log_task_progress('assemble_merged', completed=True))
-#@posttask(lambda: clean_assembly_dir('mra_assembly'))
 def assemble_merged(fastqs, scaffolds):
     fqm=fastqs[0]
     fq1=fastqs[1][0]
