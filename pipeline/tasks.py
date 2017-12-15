@@ -427,7 +427,7 @@ def run_spades(cfg, out_dir, fq=None, fq1=None, fq2=None,
     run_cmd(cfg, cfg.spades, args, cpus=threads, mem_per_cpu=int(mem_gb*1024/threads))
 
 
-def spades_assembly(cfg, scaffolds_file, assembly_name, **args):
+def spades_assembly(cfg, fasta_files, assembly_name, **args):
     
     out_dir=os.path.join(os.path.dirname(scaffolds_file), assembly_name)
     if not os.path.isdir(out_dir):
@@ -436,8 +436,8 @@ def spades_assembly(cfg, scaffolds_file, assembly_name, **args):
     run_spades(cfg, out_dir, **args)
     
     import shutil
-    shutil.copy(os.path.join(out_dir,'scaffolds.fasta'), scaffolds_file)
-    shutil.copy(os.path.join(out_dir,'contigs.fasta'), scaffolds_file+'.contigs.fasta')
+    shutil.copy(os.path.join(out_dir,'scaffolds.fasta'), fasta_files[0])
+    shutil.copy(os.path.join(out_dir,'contigs.fasta'), fasta_files[1])
     #shutil.rmtree(out_dir)
 
 
@@ -461,14 +461,14 @@ def assemble_trimmed(fastqs, scaffolds, cfg):
 #    [SAMPLE_ID]/mra_assembly
 #    [SAMPLE_ID]/[SAMPLE_ID]_mra.fasta
 #
-def assemble_merged(fastqs, scaffolds, cfg):
+def assemble_merged(fastqs, fastas, cfg):
     fqm=fastqs[0]
     fq1=fastqs[1][0]
     fq2=fastqs[1][1]
     fq1u=fastqs[1][2]
     # fq2u is typicaly low quality
 
-    spades_assembly(cfg, scaffolds, 'mra_assembly', 
+    spades_assembly(cfg, fastas, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
         threads = 4, mem_gb=8)
@@ -522,13 +522,20 @@ def qc_mr_assemblies(scaffolds, report_dir, cfg):
 
 import shutil
 
-def archive_fasta(fasta, archived_fasta):      
-    shutil.copyfile(fasta, archived_fasta)
-    shutil.copyfile(fasta+'.contigs.fasta', archived_fasta+'.contigs.fasta')
+def archive_files(files, archived_paths):
+    if not isinstance(files, list):
+        files = [files]
+    if not isinstance(archived_paths, list):
+        archived_paths = [archived_paths]
+        
+    for i in range(0, len(files)):
+        shutil.copyfile(files[i], archived_paths[i])
     
-def archive_qc(quast_report_dir, archived_qc_dir, cfg):
-    qc_dir = os.path.dirname(os.path.dirname(quast_report_dir))
-    run_cmd(cfg, "cp -r %s %s" % (qc_dir, archived_qc_dir), "", dockerize=False, run_locally=True)
+def archive_dir(directory, archived_dir):
+    if os.path.exists(archived_dir):
+        shutil.rmtree(archived_dir)
+    shutil.copytree(directory, archived_dir)  
+    #run_cmd(cfg, "cp -r %s %s" % (qc_dir, archived_qc_dir), "", dockerize=False, run_locally=True)
 
 def archive_pipeline(pipeline_dir, archived_paths, cfg):
     run_cmd(cfg, "cp -r %s %s" % (pipeline_dir, archived_paths[0]), "", dockerize=False, run_locally=True)

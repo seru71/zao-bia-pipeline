@@ -223,7 +223,7 @@ class SampleTable:
         
         d = {s:'{"target_tasks":["bcl2fastq_conversion"]}' for s in sample_ids}
         
-        d[sample_ids[0]] = '{"target_tasks":["qc_mr_assemblies"]}'
+        d[sample_ids[0]] = '{"target_tasks":["complete_run"]}'
         d[sample_ids[1]] = '{"target_tasks":["complete_run"]}'
         
         return d
@@ -328,11 +328,11 @@ if __name__ == '__main__':
         cfg.set_input_fastqs(fastqs)
         cfg.num_jobs=2
     
-        p = ZaoPipelineFactory().get_bacterial_assembly_pipeline("SAMPLE_GROUP_" + str(cfg_group_idx), cfg)                         
+        p = ZaoPipelineFactory().get_bacterial_assembly_pipeline("SG_" + str(cfg_group_idx), cfg)                         
                 
         if options.just_print:
             
-            print "\n\n\nSAMPLE_GROUP_" + str(cfg_group_idx) + \
+            print "\n\n\nSG_" + str(cfg_group_idx) + \
                 "[" + cfg_group + "] :"
                             
             p.printout(sys.stdout, cfg.target_tasks, options.forced_tasks,
@@ -347,7 +347,7 @@ if __name__ == '__main__':
 
         elif options.flowchart:
                         
-            p.printout_graph ( open("SAMPLE_GROUP_" + \
+            p.printout_graph ( open("SG_" + \
                                     str(cfg_group_idx) + "_" + \
                                     options.flowchart, "w"),
                                     # use flowchart file name extension to decide flowchart format
