@@ -13,14 +13,15 @@ class ZaoPipelineFactory:
         # assemble the pipeline 
         p = Pipeline(name=name)
         
-        bcl2fastq_conversion_task = p.transform(bcl2fastq_conversion, 
+        bcl2fastq_conversion_task = \
+            p.transform(bcl2fastq_conversion, 
                         cfg.run_folder, formatter(), 
                         os.path.join(cfg.runs_scratch_dir,'fastqs','completed'), 
                         cfg)\
-                .follows(mkdir(cfg.runs_scratch_dir))\
-                .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'fastqs')))\
-                .posttask(touch_file(os.path.join(cfg.runs_scratch_dir,'fastqs','completed')))\
-                .posttask(lambda: log_task_progress(cfg, 'bcl2fastq_conversion', completed=True))
+             .follows(mkdir(cfg.runs_scratch_dir))\
+             .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'fastqs')))\
+             .posttask(touch_file(os.path.join(cfg.runs_scratch_dir,'fastqs','completed')))\
+             .posttask(lambda: log_task_progress(cfg, 'bcl2fastq_conversion', completed=True))
 
 
         archive_fastqs_task = p.transform(archive_fastqs, 
@@ -136,18 +137,6 @@ class ZaoPipelineFactory:
         #
         # ###############
 
-        
-        
-#        assemble_trimmed_task = \
-#            p.collate(assemble_trimmed,
-#                      trim_reads_task,
-#                      formatter(),
-#                      '{subpath[0][0]}/{subdir[0][0]}_tra.fasta',
-#		      cfg)\
-#             .posttask(lambda: clean_assembly_dir('tra_assembly', cfg))\
-#             .posttask(lambda: log_task_progress(cfg, 'assemble_trimmed', start=False))\
-#             .jobs_limit(4)
-                     
             
         assemble_merged_task = \
             p.collate(assemble_merged,
@@ -168,6 +157,9 @@ class ZaoPipelineFactory:
         #
         # #############################
 
+
+        #
+        # read QC
 
         qc_raw_reads_task = \
             p.transform(qc_fastqs,
@@ -211,13 +203,83 @@ class ZaoPipelineFactory:
              .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','read_qc')))
 
 
-        qc_reads_task = p.follows(name='qc_reads', task_func=do_nothing)\
-                         .follows(qc_raw_reads_task, qc_merged_reads_task, qc_notmerged_pairs_task)\
-                         .posttask(lambda: log_task_progress(cfg, 'qc_reads', completed=True))
+        qc_reads_task = \
+            p.follows(name='qc_reads', task_func=do_nothing)\
+             .follows(qc_raw_reads_task, qc_merged_reads_task, qc_notmerged_pairs_task)\
+             .posttask(lambda: log_task_progress(cfg, 'qc_reads', completed=True))
+
+
+        #
+        # assembly QC
+          
+        qc_mr_assemblies_task = \
+            p.merge(qc_mr_assemblies,
+                    assemble_merged_task,
+                    os.path.join(cfg.runs_scratch_dir, 'qc', 'assembly_qc','mr_report'),
+                    cfg)\
+             .follows(mkdir(os.path.join(cfg.runs_scratch_dir,'qc','assembly_qc')))\
+             .posttask(lambda: log_task_progress(cfg, 'qc_mr_assemblies', completed=True))
 
 
 
+        # #####################################
+        #
+        #   A r c h i v i n g   r e s u l t s
+        #
+        # #################################
 
+        
+        archive_fasta_task = \
+            p.transform(archive_fasta,
+                        assemble_merged_task,
+                        formatter(), 
+                        os.path.join(cfg.results_archive, cfg.run_id, 'fasta', '{basename[0]}{ext[0]}'))\
+             .follows(mkdir(os.path.join(cfg.results_archive, cfg.run_id, 'fasta')))\
+             .active_if(cfg.results_archive != None)
+    
+        archive_qc_task = \
+            p.transform(archive_qc,
+                        qc_mr_assemblies,
+                        formatter(),
+                        os.path.join(cfg.results_archive, cfg.run_id, 'qc'),
+                        cfg)\
+             .follows(mkdir(os.path.join(cfg.results_archive, cfg.run_id)))\
+             .active_if(cfg.results_archive != None)
+        
+        archive_pipeline_task = \
+            p.files(archive_pipeline,
+                    os.path.join(cfg.runs_scratch_dir, 'pipeline'),
+                    [os.path.join(cfg.results_archive, cfg.run_id, 'pipeline'), 
+                     os.path.join(cfg.results_archive, cfg.run_id, 'pipeline', 'pipeline.config')],
+                    cfg)\
+             .follows(mkdir(os.path.join(cfg.results_archive, cfg.run_id)))\
+             .active_if(cfg.results_archive != None)
+       
+        archive_results_task = \
+            p.follows(name='archive_results', task_func=do_nothing)\
+             .follows(archive_fasta_task)\
+             .follows(archive_qc_task)\
+             .follows(archive_pipeline_task)\
+             .active_if(cfg.results_archive != None)\
+             .posttask(lambda: log_task_progress(cfg, 'archive_results', completed=True))
+
+
+        ###################
+        #
+        #   S u m m a r y 
+        #
+        # #############
+
+
+        complete_run_task = \
+            p.follows(name='complete_run', task_func=do_nothing)\
+             .follows(qc_reads_task)\
+             .follows(qc_mr_assemblies_task)\
+             .follows(archive_results_task)\
+             .posttask(cleanup_files)\
+             .posttask(lambda: log_task_progress(cfg, 'complete_run', completed=True))
+                             
+        
         return p
    
    

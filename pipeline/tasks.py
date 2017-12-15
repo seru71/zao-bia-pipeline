@@ -10,7 +10,6 @@ import glob
 
 #  Common functions 
 
-
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
 
@@ -116,8 +115,7 @@ def do_nothing():
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
-#   Pipeline
-
+#   Pipeline tasks
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
 
@@ -126,7 +124,7 @@ from ruffus import *
 
 #
 #
-# Prepare FASTQ
+# FASTQ generation and archiving
 # 
 
 def bcl2fastq_conversion(run_directory, completed_flag, cfg):
@@ -161,6 +159,16 @@ def archive_fastqs(completed_flag, archive_dir):
 
 
 
+# -------------------------------------------------------------------- # 
+
+
+    #8888888888888888888888888888888888888888888888888888
+    #
+    #            P r e p r o c e s s i n g
+    #
+    #8888888888888888888888888888888888888888888888888888
+
+
 #
 # Prepare directory for every sample and link the input fastq files
 # Expected format:
@@ -174,9 +182,6 @@ def link_fastqs(fastq_in, fastq_out):
     if not os.path.exists(fastq_out):
         os.symlink(fastq_in, fastq_out) 
 
-#
-# ---------------- either only trim the reads --------------------------    
-#
    
 #
 # Input FASTQ filenames are expected to have following format:
@@ -203,10 +208,6 @@ def trim_reads(inputs, outfqs, cfg):
 #    max_mem = 2048
     run_cmd(cfg, cfg.trimmomatic, args) #interpreter_args="-Xmx"+str(max_mem)+"m", cpus=1, mem_per_cpu=max_mem)
 
-
-#
-# --------------------- or merge and trim ------------------------------
-#
 
 
 #
@@ -282,16 +283,11 @@ def trim_merged_reads(input_fqs, trimmed_fq, cfg):
 # -------------------------------------------------------------------- # 
 
 
-
-
-
-
     #8888888888888888888888888888888888888888888888888888
     #
-    #                   M a p p i n g 
+    #       M a p p i n g   a n d   c a l l i n g
     #
     #8888888888888888888888888888888888888888888888888888
-
 
 
 
@@ -355,15 +351,9 @@ def map_trimmed_reads(fastqs, bam_file, sample_id, cfg):
     map_reads([(fq1,fq2),fq1u, fq2u], cfg.reference, bam_file, read_groups)
 
 
-
-
-
-    #8888888888888888888888888888888888888888888888888888
-    #
-    #         V a r i a n t   c a l l i n g
-    #
-    #8888888888888888888888888888888888888888888888888888
-
+#
+#
+#
 
 
 def call_variants_freebayes(bams_list, vcf, cfg, bam_list_filename='/tmp/bam_list'):
@@ -391,6 +381,9 @@ def call_variants_on_trimmed(bam, vcf, cfg):
 def jointcall_variants_on_trimmed(bams, vcf, cfg):
     """ Call variants using freebayes on trimmed (not merged) reads """
     call_variants_freebayes(bams, vcf, cfg)
+
+
+# -------------------------------------------------------------------- # 
 
 
     #8888888888888888888888888888888888888888888888888888
@@ -483,12 +476,14 @@ def assemble_merged(fastqs, scaffolds, cfg):
 
     
 # -------------------------------------------------------------------- #    
-    
 
-#
-#
-# QC the FASTQ files
-#
+
+    #8888888888888888888888888888888888888888888888888888
+    #
+    #          Q u a l i t y   c o n t r o l
+    #
+    #8888888888888888888888888888888888888888888888888888
+
 
 def qc_fastqs(input_fastqs, reports, cfg):
     """ Produces len(reports) reports for    """
@@ -503,71 +498,41 @@ def qc_fastqs(input_fastqs, reports, cfg):
         produce_fastqc_report(cfg, input_fastqs[i], os.path.dirname(reports[i]))
 
 
-#
-#
-# QC the assemblies
-#
-"""
-@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','assembly_qc')))
-@merge(assemble_trimmed, os.path.join(global_vars.cfg.runs_scratch_dir, 'qc', 'assembly_qc','tr_report'))
-@posttask(lambda: log_task_progress('qc_tr_assemblies', completed=True))
-def qc_tr_assemblies(scaffolds, report_dir):
-    args = ("-o %s " % report_dir) + " ".join(scaffolds)
-    run_cmd(global_vars.cfg.quast, args, dockerize=global_vars.cfg.dockerize)
 
-@follows(mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc')), mkdir(os.path.join(global_vars.cfg.runs_scratch_dir,'qc','assembly_qc')))
-@merge(assemble_merged, os.path.join(global_vars.cfg.runs_scratch_dir, 'qc', 'assembly_qc','mr_report'))
-@posttask(lambda: log_task_progress('qc_mr_assemblies', completed=True))
-def qc_mr_assemblies(scaffolds, report_dir):
+def qc_tr_assemblies(scaffolds, report_dir, cfg):
     args = ("-o %s " % report_dir) + " ".join(scaffolds)
-    run_cmd(global_vars.cfg.quast, args, dockerize=global_vars.cfg.dockerize)
+    run_cmd(cfg, cfg.quast, args)
+
+
+def qc_mr_assemblies(scaffolds, report_dir, cfg):
+    args = ("-o %s " % report_dir) + " ".join(scaffolds)
+    run_cmd(cfg, cfg.quast, args)
 
 
 
 # -------------------------------------------------------------------- #
 
 
-# 
-#
-# Archiving results
-#
+    #8888888888888888888888888888888888888888888888888888
+    #
+    #     A r c h i v i n g   a n d   c l e a n u p
+    #
+    #8888888888888888888888888888888888888888888888888888
+
 
 import shutil
 
-@active_if(global_vars.cfg.results_archive != None)
-@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'fasta')))
-@transform(assemble_merged, formatter(), os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, '{basename[0]}{ext[0]}'))
 def archive_fasta(fasta, archived_fasta):      
     shutil.copyfile(fasta, archived_fasta)
     shutil.copyfile(fasta+'.contigs.fasta', archived_fasta+'.contigs.fasta')
     
-    
-@active_if(global_vars.cfg.results_archive != None)
-@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id)))
-@transform(qc_mr_assemblies, formatter(), os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'qc'))
-def archive_qc(quast_report_dir, archived_qc_dir):
+def archive_qc(quast_report_dir, archived_qc_dir, cfg):
     qc_dir = os.path.dirname(os.path.dirname(quast_report_dir))
-    run_cmd("cp -r %s %s" % (qc_dir, archived_qc_dir), "", dockerize=False, run_locally=True)
+    run_cmd(cfg, "cp -r %s %s" % (qc_dir, archived_qc_dir), "", dockerize=False, run_locally=True)
 
-@active_if(global_vars.cfg.results_archive != None)
-@follows(mkdir(os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id)))
-@transform([os.path.join(global_vars.cfg.runs_scratch_dir, 'pipeline')], 
-           formatter(), 
-           [os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'pipeline'), 
-            os.path.join(global_vars.cfg.results_archive, global_vars.cfg.run_id, 'pipeline', 'pipeline.config')])
-def archive_pipeline(pipeline_dir, archived_paths):
-    run_cmd("cp -r %s %s" % (pipeline_dir, archived_paths[0]), "", dockerize=False, run_locally=True)
+def archive_pipeline(pipeline_dir, archived_paths, cfg):
+    run_cmd(cfg, "cp -r %s %s" % (pipeline_dir, archived_paths[0]), "", dockerize=False, run_locally=True)
     shutil.copyfile(pipeline_dir+'.config', archived_paths[1])
-
-
-@active_if(global_vars.cfg.results_archive != None)
-@follows(archive_fasta, archive_qc, archive_pipeline)
-@posttask(lambda: log_task_progress('archive_results', completed=True))
-def archive_results():
-    pass
-
-
-
 
 
 def cleanup_files():
@@ -577,14 +542,6 @@ def cleanup_files():
 #            ".format(dir=global_vars.cfg.runs_scratch_dir), "", run_locally=True)
 
 
-@follows(qc_reads, qc_mr_assemblies, archive_results)
-@posttask(cleanup_files)
-@posttask(lambda: log_task_progress('complete_run', completed=True))
-def complete_run():
-    pass
-
-
-"""
 
 
 

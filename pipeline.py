@@ -223,8 +223,8 @@ class SampleTable:
         
         d = {s:'{"target_tasks":["bcl2fastq_conversion"]}' for s in sample_ids}
         
-        d[sample_ids[0]] = '{"target_tasks":["qc_reads"]}'
-        d[sample_ids[1]] = '{"target_tasks":["assemble_merged"]}'
+        d[sample_ids[0]] = '{"target_tasks":["qc_mr_assemblies"]}'
+        d[sample_ids[1]] = '{"target_tasks":["complete_run"]}'
         
         return d
 
