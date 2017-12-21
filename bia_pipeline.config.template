@@ -106,8 +106,8 @@ fastqc:                     /ngs/software/apps/FastQC-0.11.5/fastqc {args}
 spades:                     /ngs/software/apps/SPAdes-3.9.0-Linux/bin/spades.py {args}
 quast:                      /ngs/software/apps/quast-4.5/quast.py {args}
 bwa:						/ngs/software/apps/bwa-0.7.13/bwa {args}
-samtools:					/ngs/software/apps/samtools-1.3.1/bin/samtools {args}
-freebayes:					/ngs/software/apps/freebayes_d784cf8/bin/freebayes {args}
+samtools:					/ngs/software/apps/samtools-1.6/bin/samtools {args}
+freebayes:					/ngs/software/apps/freebayes-1.1.0/bin/freebayes {args}
 
 
 
