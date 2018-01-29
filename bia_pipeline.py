@@ -872,7 +872,7 @@ def assemble_trimmed(fastqs, scaffolds):
 # The output will be written to SAMPLE_ID directory:
 #    [SAMPLE_ID]/
 #
-@jobs_limit(8)
+@jobs_limit(2)
 @collate([trim_merged_reads, trim_notmerged_pairs], formatter(), '{subpath[0][0]}/{subdir[0][0]}_mra.fasta')
 @posttask(lambda: log_task_progress('assemble_merged', completed=True))
 #@posttask(lambda: clean_assembly_dir('mra_assembly'))
@@ -886,7 +886,7 @@ def assemble_merged(fastqs, scaffolds):
     spades_assembly(scaffolds, 'mra_assembly', 
         fq=fqm, fq1=fq1, fq2=fq2, 
         fq1_single=fq1u, 
-        threads = 4, mem_gb=16)
+        threads = 4, mem_gb=50)
 
 
     
