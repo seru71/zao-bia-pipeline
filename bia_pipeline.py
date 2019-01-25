@@ -18,6 +18,7 @@
 import sys
 import os
 import glob
+import re
 
 
 #88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
@@ -506,6 +507,21 @@ def bcl2fastq_conversion(run_directory, completed_flag):
     
 
 
+def has_skip_processing_flag(fastq, sample_sheet):
+    """ check if sample is not flagged to skip processing """
+    SKIP_PROCESSING_FLAG = 'NO_ASSEMBLY'
+    tag_column = 8  # index of the description column in SampleSheet file    
+
+    sample_id = re.search('.+/(.+)_S[1-9]\d?_L\d\d\d',fastq).group(1)
+    with open(sample_sheet) as ss:
+        for l in ss.xreadlines():
+            if l.find('Sample_ID')==0:
+                tag_column = l.strip().split(',').index('Description')
+            if l.find(sample_id)==0:
+                return l.split(',')[tag_column].strip() == SKIP_PROCESSING_FLAG
+        raise Exception('No sample [%s] found in %s.' % (sample_id, sample_sheet))
+
+
 @active_if(run_folder != None and fastq_archive != None)
 @transform(bcl2fastq_conversion, formatter(".+/(?P<RUN_ID>[^/]+)/fastqs/completed"), os.path.join(fastq_archive, "{RUN_ID[0]}", "fastq"))
 @posttask(lambda: log_task_progress('archive_fastqs', completed=True))
@@ -522,25 +538,16 @@ def archive_fastqs(completed_flag, archive_dir):
     shutil.move(fq_dir, archive_dir)
     os.mkdir(fq_dir)
     for f in glob.glob(os.path.join(archive_dir,"*.fastq.gz")):
-        os.symlink(f, os.path.join(fq_dir,os.path.basename(f)))
+        if os.path.basename(f).find('Undetermined') == 0: continue
+        if not has_skip_processing_flag(f, os.path.join(run_folder,'SampleSheet.csv')):
+            os.symlink(f, os.path.join(fq_dir,os.path.basename(f)))
+        else:
+            logger.info("Skipping processing of %s based on flag in SampleSheet" % f)
 
 
-def get_sample_id_from_fq_path(fq):
-    bn = os.path.basename(fq)
-    return bn[:bn.find('_S')]
+    # move the completed flag
+    shutil.move(os.path.join(archive_dir,'completed'), os.path.join(fq_dir,'completed'))
 
-def no_assembly(sample_sheet, fastq):
-    """ check if sample is not flagged to skip processing """
-    
-    TAG_COLUMN = 9
-    SKIP_PROCESSING_TAG = 'NO_ASSEMBLY'
-    
-    sample_id = get_sample_id_from_fq_path(fastq)
-    with open(sample_sheet) as ss:
-        for l in ss.xreadlines():
-            if l.find(sample_id)==0: 
-                return l.split(',')[TAG_COLUMN].strip() == SKIP_PROCESSING_TAG
-        raise Exception('No sample [%s] found in %s.' % (sample_id, sample_sheet))
 
 #
 # Prepare directory for every sample and link the input fastq files
@@ -553,14 +560,10 @@ def no_assembly(sample_sheet, fastq):
 @follows(archive_fastqs)
 @transform(os.path.join(runs_scratch_dir,'fastqs','*.fastq.gz') if run_folder != None else input_fastqs,
            formatter('(?P<PATH>.+)/(?P<SAMPLE_ID>[^/]+)_S[1-9]\d?_L\d\d\d_R[12]_001\.fastq\.gz$'), 
-           add_inputs(os.path.join(run_folder,'SampleSheet.csv')),
            runs_scratch_dir+'/{SAMPLE_ID[0]}/{basename[0]}{ext[0]}')
 @posttask(lambda: log_task_progress('link_fastqs', completed=True))
-def link_fastqs(fastq_in, sample_sheet, fastq_out):
-    """Make working directory for every sample not flagged in sample sheets as NO_ASSEMBLY, and link fastq files in"""
-    
-    if no_assembly(sample_sheet, fastq_in): return
-    
+def link_fastqs(fastq_in, fastq_out):
+    """Make working directory for every sample and link fastq files in"""
     if not os.path.exists(os.path.dirname(fastq_out)):
         os.mkdir(os.path.dirname(fastq_out))
     if not os.path.exists(fastq_out):
